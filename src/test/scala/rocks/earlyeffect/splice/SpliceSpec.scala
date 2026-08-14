@@ -50,7 +50,7 @@ object SpliceSpec extends ZIOSpecDefault:
           out = dir.resolve("splice.js")
           path <- Splice.run(
             SpliceInput(
-              linker = List(LinkerFile("main.js", """import * as Foo from "foo";""")),
+              linker = List(LinkerFile("main.js", "const Foo = __splice_foo;\n")),
               libs = Map("foo" -> foo),
               output = out,
             )
@@ -77,8 +77,8 @@ object SpliceSpec extends ZIOSpecDefault:
               linker = List(
                 LinkerFile(
                   "main.js",
-                  """import * as Foo from "foo";
-                    |import * as Bar from "bar";
+                  """const Foo = __splice_foo;
+                    |const Bar = __splice_bar;
                     |""".stripMargin,
                 )
               ),
@@ -109,7 +109,7 @@ object SpliceSpec extends ZIOSpecDefault:
           out = dir.resolve("splice.js")
           _ <- Splice.run(
             SpliceInput(
-              linker = List(LinkerFile("main.js", """import * as Foo from "foo";""")),
+              linker = List(LinkerFile("main.js", "const Foo = __splice_foo;\n")),
               libs = Map("foo" -> foo),
               output = out,
             )
@@ -136,7 +136,7 @@ object SpliceSpec extends ZIOSpecDefault:
               linker = List(
                 LinkerFile(
                   "main.js",
-                  """import escapeStringRegexp from "escape-string-regexp";
+                  """const escapeStringRegexp = __splice_escape_string_regexp.default;
                     |globalThis.__spliced = escapeStringRegexp("hello?");
                     |""".stripMargin,
                 )
@@ -171,7 +171,7 @@ object SpliceSpec extends ZIOSpecDefault:
               linker = List(
                 LinkerFile(
                   "main.js",
-                  """import { used } from "foo";
+                  """const used = __splice_foo.used;
                     |used();
                     |export { used };
                     |""".stripMargin,
@@ -198,7 +198,7 @@ object SpliceSpec extends ZIOSpecDefault:
           err <- Splice
             .run(
               SpliceInput(
-                linker = List(LinkerFile("main.js", """import * as Foo from "foo";""")),
+                linker = List(LinkerFile("main.js", "const Foo = __splice_foo;\n")),
                 libs = Map("foo" -> foo),
                 output = out,
                 optimize = true,
@@ -223,7 +223,7 @@ object SpliceSpec extends ZIOSpecDefault:
               linker = List(
                 LinkerFile(
                   "main.js",
-                  """import * as Foo from "foo";
+                  """const Foo = __splice_foo;
                     |document.getElementById("out").textContent = Foo.greet();
                     |""".stripMargin,
                 )
@@ -258,7 +258,7 @@ object SpliceSpec extends ZIOSpecDefault:
               linker = List(
                 LinkerFile(
                   "main.js",
-                  """import * as Foo from "foo";
+                  """const Foo = __splice_foo;
                     |document.getElementById("out").textContent = Foo.greet();
                     |""".stripMargin,
                 )
@@ -312,7 +312,7 @@ object SpliceSpec extends ZIOSpecDefault:
               linker = List(
                 LinkerFile(
                   "main.js",
-                  """import { used } from "foo";
+                  """const used = __splice_foo.used;
                     |used();
                     |""".stripMargin,
                 )

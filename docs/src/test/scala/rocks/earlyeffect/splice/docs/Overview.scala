@@ -18,16 +18,16 @@ Any `@JSImport("some-lib")` (or CommonJS `require`) is in scope.
 """,
     section("Fast vs full")(
       md"""
-`spliceFast` runs after `fastLinkJS` (development, seconds, readable enough).
-`spliceFull` runs after `fullLinkJS` and is the production path (small, efficient).
-Neither task reimplements the Scala.js linker.
+`spliceFast` private-links remapped IR (development, seconds, readable enough).
+`spliceFull` private-links remapped IR and is the production path (small, efficient).
+Vanilla `fastLinkJS` / `fullLinkJS` are unchanged; splice does not rewrite their JS.
 """,
       exampleValue {
-        List("spliceFast" -> "fastLinkJS", "spliceFull" -> "fullLinkJS")
+        List("spliceFast" -> "private remapped link", "spliceFull" -> "private remapped link + Closure")
       }.assert { pairs =>
         assertTrue(
-          pairs.head == ("spliceFast" -> "fastLinkJS"),
-          pairs.last == ("spliceFull" -> "fullLinkJS"),
+          pairs.head._1 == "spliceFast",
+          pairs.last._1 == "spliceFull",
         )
       },
     ),

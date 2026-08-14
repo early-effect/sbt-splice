@@ -1,6 +1,6 @@
 # sbt-splice
 
-An sbt 2 / Scala 3 plugin (`rocks.earlyeffect` % `sbt-splice`) that takes Scala.js linker output and produces browser-loadable JavaScript with bare module specifiers resolved. Zero Node: never invoke npm, npx, node, or read a `package.json`. JS libraries arrive as **pinned bytes**: a vendored file, a Maven/WebJar coordinate, or a fetch from a CDN / trusted repo that downloads the `.js` and nothing else.
+An sbt 2 / Scala 3 plugin (`rocks.earlyeffect` % `sbt-splice`) that remaps `@JSImport` in IR, private-links, and wraps pinned vendor JS onto `globalThis.__splice_*` so the browser can load the result. Zero Node: never invoke npm, npx, node, or read a `package.json`. JS libraries arrive as **pinned bytes**: a vendored file, a Maven/WebJar coordinate, or a fetch from a CDN / trusted repo that downloads the `.js` and nothing else.
 
 This is a **general-purpose** Scala.js tool. Any project that uses `@JSImport("some-lib")` (or CommonJS `require`) and does not want npm in the build is in scope: one library or several, ESM or CJS files, mapped specifier to path. It is not a Preact plugin, not an ascent plugin, and not a Specular plugin.
 
@@ -31,7 +31,7 @@ an ascent example) still follow publish. See §6.
 |---|---|---|
 | rename | Plugin lives in `rocks.earlyeffect.splice` (no `sbt` package segment) | done |
 | modules | ESM / CJS / UMD / global wrap; `.extern` Closure hatch | done |
-| ir | Private link; `@JSImport` → Global in IR; no linker-JS regex rewrite | not started |
+| ir | Private link; `@JSImport` → Global in IR; no linker-JS regex rewrite | done |
 | maps | Configurable source maps (fast on, full off by default) | not started |
 | github | Tag tarball resolver, sha256 pin | not started |
 
@@ -50,11 +50,11 @@ Write the interesting logic in ZIO. Do not dump a procedural script into `build.
 
 ## 1. Goal and non-goals
 
-**Goal.** After Scala.js links, splice turns bare specifiers (`import * as $i_foo from "foo"`) into a browser-loadable artifact. Development (`spliceFast`) is seconds and readable enough. Production (`spliceFull`) is small and efficient. The output is suitable as a Specular `assets/client.js` or any other static `<script>` the consumer already serves.
+**Goal.** Mapped `@JSImport` becomes `Global(__splice_*)` in IR. splice private-links that IR, wraps pinned vendor files onto those globals, and emits a browser-loadable artifact. Development (`spliceFast`) is seconds and readable enough. Production (`spliceFull`) is small and efficient. The output is suitable as a Specular `assets/client.js` or any other static `<script>` the consumer already serves.
 
 **Non-goals.**
 
-- Do not reimplement the Scala.js linker. Depend on `fastLinkJS` / `fullLinkJS`.
+- Do not reimplement the Scala.js linker. Reuse its linker (same config as `fastLinkJS` / `fullLinkJS`) on remapped IR. Do not consume or rewrite vanilla linker JS.
 - Do not invoke npm, npx, node, or read a `package.json`. No Vite wrapper. No esbuild, terser, swc, or rolldown. Fetching JS is GET-bytes only: no install scripts, no registry metadata, nothing to execute.
 - Do not rewrite imports to live CDNs (that is scalajs-importmap; not a sealed supply chain). Build-time fetch of a **pinned** file into the Coursier cache is fine; leaving `import "https://cdn…"` in the output is not.
 - Do not become a general JS application bundler (no npm graph, no `"exports"` walk, no Node builtins). Specifiers not in the map fail. Nested relative imports inside a mapped file are resolved against that file.
@@ -71,26 +71,32 @@ Write the interesting logic in ZIO. Do not dump a procedural script into `build.
 ## 3. Architecture
 
 ```
-fastLinkJS / fullLinkJS
+Compile / scalaJSIR
         │
         ▼
-  resolve / splice     specifier → File (Coursier cache or vendor)
-        │              vendor | Maven/WebJar | CDN via spliceResolvers
+  remap IR             mapped @JSImport → Global(__splice_*)
+        │
+        ▼
+  private Linker.link  same scalaJSLinker as fast / full, private dir
+        │              vanilla fastLinkJS / fullLinkJS stay untouched
+        ▼
+  resolve / wrap       specifier → File (Coursier cache or vendor)
+        │              vendor IIFE onto __splice_*; leftover check
         ▼
   optimize             fast: none (readable enough)
-                       full: Scala.js minify (already in fullLinkJS)
-                             + post-link Closure on the combined file
+                       full: Scala.js minify (already in the private full link)
+                             + Closure advanced on the combined file
         │
         ▼
   emit                 one browser-loadable file (default),
                        path configurable
 ```
 
-The splice task depends on the linker task. It reads the linker `Report` and the JS files in `scalaJSLinkerOutputDirectory`. It does not call `Linker.link`.
+The splice task reads `scalaJSIR` and the Scala.js linker configured for `fastLinkJS` / `fullLinkJS`. It remaps mapped `@JSImport` load specs, then calls `Linker.link` into `target/splice/fast-link` or `full-link`. It does not rewrite vanilla linker output and does not hook `scalaJSIR` globally, so `fastLinkJS` stays an import-based ES module.
 
 **Plugin shape (sketch).**
 
-- `spliceFast` (or `splice`) depends on `fastLinkJS`. `spliceFull` depends on `fullLinkJS`. Names match Scala.js (`fast` / `full`) and the two-stage feel of scalajs-bundler.
+- `spliceFast` private-links remapped IR with the fast linker config. `spliceFull` does the same with the full-opt linker, then Closure. Names match Scala.js (`fast` / `full`) and the two-stage feel of scalajs-bundler.
 - Bare specifiers (`"foo"`, `"foo/plugin"`) map to a **source** that resolves to a File. The splice step only ever sees files. Several mappings in one project are the normal case, not a special case.
 - Fail the task on the first unresolved bare specifier (message names the specifier and the file that referenced it). After emit, a leftover `from "foo"` or `require("foo")` is a bug.
 
@@ -150,8 +156,8 @@ Two different tools, two different jobs. Closure is the production minifier for 
 
 | Task | On top of | Intent |
 |---|---|---|
-| `spliceFast` | `fastLinkJS` | Development, seconds, readable enough |
-| `spliceFull` | `fullLinkJS` | Production, small and efficient |
+| `spliceFast` | private remapped link (fast linker config) | Development, seconds, readable enough |
+| `spliceFull` | private remapped link (full linker config) + Closure | Production, small and efficient |
 
 ### What Scala.js already does (reuse this)
 
@@ -159,7 +165,7 @@ Two different tools, two different jobs. Closure is the production minifier for 
 
 | Piece | What it sees | What splice does |
 |---|---|---|
-| Linker (`fastLinkJS` / `fullLinkJS`) | `.sjsir` only | Depend on it. Never call `Linker.link`. |
+| Linker (`fastLinkJS` / `fullLinkJS`) | `.sjsir` only | splice calls `Linker.link` on remapped IR into a private directory. Vanilla linker tasks stay unchanged. Extra JS still cannot enter the linker. |
 | IR optimizer | Scala.js IR | Comes with the link. Leave it on. |
 | Minify (Scala.js 1.16+, on in `fullLinkJS`) | Property names of **Scala classes**, using types and Scala.js semantics | Keep on. This is the production shrink of the Scala graph, including under `ModuleKind.ESModule`. |
 | Closure backend (`ClosureLinkerBackend`) | Emitter trees of the Scala graph, one module, **not** `ESModule` | Do not rely on this for spliced JS. Deprecated and off by default as of Scala.js 1.21 (`withClosureCompiler(true)` still works, for now). |
@@ -188,8 +194,8 @@ From the [Scala.js module docs](https://www.scala-js.org/doc/project/module.html
 
 **Default: 3, implemented as 2.**
 
-- **`spliceFast`:** after `fastLinkJS`. Keep the consumer's module kind (typically ESModule, required for `@JSImport`). Resolve and splice. No Closure. Readable, seconds.
-- **`spliceFull`:** after `fullLinkJS` (Scala.js minify already on). Splice into one script, then Closure advanced on that file as a **single compilation unit**. Emit a script, not an ES module, because Closure cannot consume ES modules the way Scala.js needs.
+- **`spliceFast`:** private remapped link with the consumer's module kind (typically ESModule, required for `@JSImport`). Wrap vendor files. No Closure. Readable, seconds.
+- **`spliceFull`:** private remapped link with the full-opt linker (Scala.js minify already on). Wrap vendor files into one script, then Closure advanced on that file as a **single compilation unit**. Emit a script, not an ES module, because Closure cannot consume ES modules the way Scala.js needs.
 
 Option 1 is the weaker production path. Extra JS cannot enter the linker, so linker Closure (even if re-enabled on CommonJS) never sees spliced files. Concatenating after a Scala-only Closure pass leaves vendor JS unminified unless you Closure again. `NoModule` also cannot express `@JSImport`. One post-link pass on the spliced program is the honest path. Re-enable linker Closure only if a measured size win remains *after* the post-link pass; it is not the default.
 
@@ -220,7 +226,7 @@ Several JS deps make this sharper, not weaker. Five vendor files are still one C
 What *does* make sense:
 
 - **Coursier:** raw vendor bytes, keyed by URL / Maven coord + checksum. Shared across projects.
-- **sbt task cache on `spliceFull`:** skip Closure when *all* of these are unchanged: `fullLinkJS` digest, every spliced file digest, Closure JAR version, externs, splice settings. That is the combined artifact in `target/`, not a Coursier entry. A Scala-only edit still re-runs Closure (correct). A no-op rebuild does not.
+- **sbt task cache on `spliceFull`:** skip Closure when *all* of these are unchanged: private full-link digest, every spliced file digest, Closure JAR version, externs, splice settings. That is the combined artifact in `target/`, not a Coursier entry. A Scala-only edit still re-runs Closure (correct). A no-op rebuild does not.
 - **`spliceFast`:** concat/rewrite is cheap; task cache is enough. No Closure.
 
 The only per-dep minify worth caching would be a `SIMPLE` / whitespace pass on a library marked `extern`. That is the escape hatch, not the default. Do not build the cache around it.
@@ -307,10 +313,10 @@ published). `pomOnly()` on `org.graalvm.polyglot:js` does not pull `js-language`
 ## 6. Next: pre-release, then publish, then adopt
 
 The phase-0–4 internals work. Remaining **in this repo** is the pre-release
-table at the top (module wrap, IR remap, source maps, GitHub tarballs). Central
-publish waits until that table is done. Consumers adopt from Central after that.
+table at the top (source maps and GitHub tarballs). Central publish waits until
+that table is done. Consumers adopt from Central after that.
 
-1. **Finish the pre-release waves** (rename and modules are done; see the table).
+1. **Finish the pre-release waves** (rename, modules, and IR are done; maps and GitHub remain).
 2. **First Central publish** of `rocks.earlyeffect` % `sbt-splice`. Until that
    exists, consumers cannot depend on it.
 3. **preactile docs client.** `docs / specularJsLink` stops calling `npm install`
@@ -351,18 +357,22 @@ sbt-splice on its own after publish.
   is not the default. Fail the task on Closure errors.
 - **Allowlist.** `spliceResolvers` is the URL allowlist. A company adds an
   internal Maven repo of WebJars and drops public CDNs.
+- **IR remap.** Mapped `@JSImport` becomes `Global(__splice_*)` in IR. splice
+  tasks private-link remapped IR; they do not regex-rewrite Scala.js linker JS.
+  Unmapped specifiers still fail leftover/unresolved checks. `scalajs-ir` and
+  `scalajs-linker-interface` are explicit plugin dependencies (sbt-scalajs does
+  not always export those types to Scala 3 sources).
 
 ### Still open
 
-- **Source maps.** Fast should stitch the linker map through rewrite. Full drops
-  maps today (explicit in Usage).
+- **Source maps.** Fast should stitch the private-link map through prepended
+  wrappers. Offset is the exact prepended line count, including blanks. Full
+  off by default (explicit in Usage).
 - **Split modules on fast.** Default is one file. `js.dynamicImport` /
   `ModuleSplitStyle` may want a tiny set; full stays one file until someone has
   a measured load-time or cache-busting reason.
 - **GitHub release tarballs.** Extra resolver. jsDelivr / unpkg / WebJars cover
   typical packages.
-- **IR remap** if post-link rewrite proves fragile. Default stays post-link on
-  emitted JS.
 
 ## 8. Sharp edges (this plugin)
 
@@ -370,6 +380,13 @@ Product-local rakes. Cross-plugin sbt 2 rakes live in the global `sbt-2-plugin`
 rule.
 
 - Plugin sources live in `rocks.earlyeffect.splice` (no `sbt` package segment).
+- Do not hook `scalaJSIR` globally; that would poison vanilla `fastLinkJS`.
+  Remap only inside the splice private link.
+- `scalajs-ir` and `scalajs-linker-interface` must be explicit plugin
+  dependencies. `addSbtPlugin("sbt-scalajs")` does not always export those
+  types to Scala 3 plugin sources.
+- `spliceFast` / `spliceFull` return `java.io.File`; wrap the task in
+  `Def.uncached` (sbt 2 refuses `File` as a cached task output).
 - sbt 2 `config("splice")` macro: the **val** must be capitalized
   (`val SpliceJs = config("splice").hide`).
 - sbt 2 `target.value` is `target/out/jvm/…/<id>/`. Advertised output stays at

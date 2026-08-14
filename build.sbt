@@ -67,6 +67,9 @@ lazy val root = project
       "dev.zio"         %% "zio-test-sbt"        % zioVersion % Test,
       ("io.get-coursier" % "coursier-cache_2.13" % "2.1.25-M26")
         .exclude("org.scala-lang.modules", "scala-collection-compat_2.13"),
+      // sbt-scalajs does not always export IR types onto a Scala 3 plugin classpath.
+      "org.scala-js" %% "scalajs-ir"                % scalaJsVersion,
+      "org.scala-js" %% "scalajs-linker-interface" % scalaJsVersion,
       // Same artifact Scala.js 1.22's scalajs-linker pins.
       "com.google.javascript" % "closure-compiler" % "v20220202",
       // Test-only: prove spliced output runs on a JVM JS engine. Not published.

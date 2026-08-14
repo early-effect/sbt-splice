@@ -1,13 +1,18 @@
 package rocks.earlyeffect.splice
 
+import org.scalajs.linker.interface.{ClearableLinker, IRFile}
+import org.scalajs.logging.Logger as SJSLogger
+import org.scalajs.sbtplugin.LinkerImpl
 import org.scalajs.sbtplugin.ScalaJSPlugin
 import org.scalajs.sbtplugin.ScalaJSPlugin.autoImport.*
 import sbt.*
 import sbt.Keys.*
 
 import java.nio.file.Path
+import scala.concurrent.duration.Duration
+import scala.concurrent.{Await, ExecutionContext}
 
-/** Post-link splice of pinned JS into Scala.js output. */
+/** Private remapped link, then splice of pinned JS onto `__splice_*`. */
 object SplicePlugin extends AutoPlugin:
 
   private val SpliceJs: Configuration = config("splice").hide
@@ -22,10 +27,10 @@ object SplicePlugin extends AutoPlugin:
     val spliceFastOutput = settingKey[File]("Where spliceFast writes the spliced JS.")
     val spliceFullOutput = settingKey[File]("Where spliceFull writes the spliced JS.")
     val spliceFast       = taskKey[File](
-      "Splice pinned JS into fastLinkJS output (development)."
+      "Private-link remapped IR, then splice pinned JS (development)."
     )
     val spliceFull = taskKey[File](
-      "Splice pinned JS into fullLinkJS output, then Closure-advanced (production)."
+      "Private-link remapped IR, splice pinned JS, then Closure-advanced (production)."
     )
     export rocks.earlyeffect.splice.{Splice, SpliceLib, SpliceResolver}
     export rocks.earlyeffect.splice.SpliceLib.sha256
@@ -61,39 +66,89 @@ object SplicePlugin extends AutoPlugin:
     // project-root path docs advertise (`target/splice/fast.js`).
     spliceFastOutput := Def.uncached(baseDirectory.value / "target" / "splice" / "fast.js"),
     spliceFullOutput := Def.uncached(baseDirectory.value / "target" / "splice" / "full.js"),
-    spliceFast       := Def.uncached {
-      val _   = (Compile / fastLinkJS).value
-      val dir = (Compile / fastLinkJS / scalaJSLinkerOutputDirectory).value
-      runSplice(
-        dir = dir,
-        libs = spliceLibs.value,
-        out = spliceFastOutput.value,
-        resolvers = spliceResolvers.value,
-        report = update.value,
-        cacheDir = csrCacheDirectory.value.toPath,
-        localOnly = offline.value,
-        extractDir = (baseDirectory.value / "target" / "splice" / "extracted").toPath,
+    spliceFast       := Def.uncached(
+      spliceTask(
+        stage = fastLinkJS,
+        linkDirName = "fast-link",
+        out = spliceFastOutput,
         optimize = false,
-        cacheStamp = None,
-      )
-    },
-    spliceFull := Def.uncached {
-      val _   = (Compile / fullLinkJS).value
-      val dir = (Compile / fullLinkJS / scalaJSLinkerOutputDirectory).value
-      runSplice(
-        dir = dir,
-        libs = spliceLibs.value,
-        out = spliceFullOutput.value,
-        resolvers = spliceResolvers.value,
-        report = update.value,
-        cacheDir = csrCacheDirectory.value.toPath,
-        localOnly = offline.value,
-        extractDir = (baseDirectory.value / "target" / "splice" / "extracted").toPath,
+      ).value
+    ),
+    spliceFull := Def.uncached(
+      spliceTask(
+        stage = fullLinkJS,
+        linkDirName = "full-link",
+        out = spliceFullOutput,
         optimize = true,
-        cacheStamp = Some(streams.value.cacheDirectory / "splice-full-digest"),
-      )
-    },
+      ).value
+    ),
   )
+
+  private def spliceTask(
+      stage: TaskKey[sbt.Attributed[org.scalajs.linker.interface.Report]],
+      linkDirName: String,
+      out: SettingKey[File],
+      optimize: Boolean,
+  ): Def.Initialize[Task[File]] =
+    Def.taskDyn {
+      val irInfo     = (Compile / scalaJSIR).value
+      val linker     = (Compile / stage / scalaJSLinker).value
+      val linkerImpl = (Compile / stage / scalaJSLinkerImpl).value
+      val usesTag    = (Compile / stage / usesScalaJSLinkerTag).value
+      val inits      = (Compile / scalaJSModuleInitializers).value
+      val factory    = scalaJSLoggerFactory.value
+      val specs      = spliceLibs.value.map(_.specifier).toSet
+      val libs       = spliceLibs.value
+      val dest       = out.value
+      val resolvers  = spliceResolvers.value
+      val report     = update.value
+      val cacheDir   = csrCacheDirectory.value.toPath
+      val localOnly  = offline.value
+      val extractDir = (baseDirectory.value / "target" / "splice" / "extracted").toPath
+      val linkDir    = baseDirectory.value / "target" / "splice" / linkDirName
+      val stamp      =
+        if optimize then Some(streams.value.cacheDirectory / "splice-full-digest") else None
+      Def
+        .task {
+          Def.uncached {
+            privateLink(irInfo.data, specs, linker, linkerImpl, inits, factory, streams.value.log, linkDir)
+            runSplice(
+              dir = linkDir,
+              libs = libs,
+              out = dest,
+              resolvers = resolvers,
+              report = report,
+              cacheDir = cacheDir,
+              localOnly = localOnly,
+              extractDir = extractDir,
+              optimize = optimize,
+              cacheStamp = stamp,
+            )
+          }
+        }
+        .tag(usesTag)
+    }
+
+  private def privateLink(
+      ir: Seq[IRFile],
+      mapped: Set[String],
+      linker: ClearableLinker,
+      linkerImpl: LinkerImpl,
+      inits: Seq[org.scalajs.linker.interface.ModuleInitializer],
+      factory: sbt.Logger => SJSLogger,
+      log: sbt.Logger,
+      linkDir: File,
+  ): Unit =
+    IO.createDirectory(linkDir)
+    val remapped           = ir.map(SpliceIR.fromIRFile(_, mapped))
+    val tlog               = factory(log)
+    given ExecutionContext = ExecutionContext.global
+    Await.result(
+      linker.link(remapped, inits, linkerImpl.outputDirectory(linkDir.toPath), tlog),
+      Duration.Inf,
+    )
+    ()
+  end privateLink
 
   private def runSplice(
       dir: File,

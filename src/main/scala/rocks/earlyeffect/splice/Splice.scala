@@ -104,7 +104,7 @@ object Splice:
           unresolvedIn(file.contents, file.label, input.libs)
         _ <- ZIO.foreachDiscard(input.libs.toList.sortBy(_._1)): (spec, path) =>
           wrap(spec, path, input.extern.contains(spec))
-        rewritten = input.linker.map(f => JsModules.rewrite(f.contents, ids.toMap)).mkString("\n")
+        rewritten = input.linker.map(_.contents).mkString("\n")
         linkerJs  = if input.optimize then JsModules.dropExports(rewritten) else rewritten
         bundledJs = bundled.toList :+ ("linker.js" -> linkerJs)
         names     = input.extern.toList.sorted.map(JsModules.ident)

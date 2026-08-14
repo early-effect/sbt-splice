@@ -1,6 +1,6 @@
 # sbt-splice
 
-sbt 2 / Scala 3 plugin: take Scala.js linker output, resolve bare module specifiers against pinned JS (vendor file, Maven/WebJar, or CDN fetch), emit browser-loadable JavaScript. Zero Node.
+sbt 2 / Scala 3 plugin: remap `@JSImport` in IR, private-link, wrap pinned JS (vendor file, Maven/WebJar, or CDN fetch) onto `globalThis.__splice_*`, emit browser-loadable JavaScript. Zero Node.
 
 Coordinate: `rocks.earlyeffect` % `sbt-splice`
 

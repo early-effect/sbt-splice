@@ -22,7 +22,7 @@ object RunSpec extends ZIOSpecDefault:
               linker = List(
                 LinkerFile(
                   "main.js",
-                  """import escapeStringRegexp from "escape-string-regexp";
+                  """const escapeStringRegexp = __splice_escape_string_regexp.default;
                     |document.getElementById("out").textContent = escapeStringRegexp("hello?");
                     |""".stripMargin,
                 )
@@ -52,7 +52,7 @@ object RunSpec extends ZIOSpecDefault:
               linker = List(
                 LinkerFile(
                   "main.js",
-                  """import * as Preact from "preact";
+                  """const Preact = __splice_preact;
                     |document.getElementById("out").textContent = Preact.h("h1", null, "ok").type;
                     |""".stripMargin,
                 )
@@ -82,7 +82,7 @@ object RunSpec extends ZIOSpecDefault:
               linker = List(
                 LinkerFile(
                   "main.js",
-                  """import * as Preact from "preact";
+                  """const Preact = __splice_preact;
                     |document.getElementById("out").textContent = Preact.h("h1", null, "ok").type;
                     |""".stripMargin,
                 )
