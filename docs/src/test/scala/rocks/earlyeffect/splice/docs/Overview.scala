@@ -13,21 +13,22 @@ emits browser-loadable JavaScript with bare module specifiers resolved. It never
 invokes npm, npx, or node, and it never reads a `package.json`.
 
 JS libraries arrive as pinned bytes: a file you vendor, a Maven/WebJar coordinate,
-or a fetch from jsDelivr / unpkg through Coursier. The plugin is general-purpose.
+or a fetch from jsDelivr / unpkg / a GitHub tag tarball through Coursier. The plugin
+is general-purpose.
 Any `@JSImport("some-lib")` (or CommonJS `require`) is in scope.
 """,
     section("Fast vs full")(
       md"""
-`spliceFast` runs after `fastLinkJS` (development, seconds, readable enough).
-`spliceFull` runs after `fullLinkJS` and is the production path (small, efficient).
-Neither task reimplements the Scala.js linker.
+`spliceFast` private-links remapped IR (development, seconds, readable enough).
+`spliceFull` private-links remapped IR and is the production path (small, efficient).
+Vanilla `fastLinkJS` / `fullLinkJS` are unchanged; splice does not rewrite their JS.
 """,
       exampleValue {
-        List("spliceFast" -> "fastLinkJS", "spliceFull" -> "fullLinkJS")
+        List("spliceFast" -> "private remapped link", "spliceFull" -> "private remapped link + Closure")
       }.assert { pairs =>
         assertTrue(
-          pairs.head == ("spliceFast" -> "fastLinkJS"),
-          pairs.last == ("spliceFull" -> "fullLinkJS"),
+          pairs.head._1 == "spliceFast",
+          pairs.last._1 == "spliceFull",
         )
       },
     ),

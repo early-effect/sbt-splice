@@ -4,7 +4,10 @@ import zio.*
 import zio.test.*
 
 import com.sun.net.httpserver.{HttpExchange, HttpServer}
+import org.apache.commons.compress.archivers.tar.{TarArchiveEntry, TarArchiveOutputStream}
+import org.apache.commons.compress.compressors.gzip.GzipCompressorOutputStream
 
+import java.io.ByteArrayOutputStream
 import java.net.InetSocketAddress
 import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Path}
@@ -153,11 +156,133 @@ object ResolveSpec extends ZIOSpecDefault:
             .flip
         yield assertTrue(err == SpliceError.NoResolver("foo", "maven"))
       },
+      test("GitHub without sha256 fails before fetch") {
+        for
+          dir <- tempDir
+          err <- Splice
+            .resolve(
+              Seq(Splice.github("foo", "owner/repo", "1.0.0", "dist/foo.js")),
+              envAt(dir).copy(resolvers = Seq(Splice.github)),
+            )
+            .flip
+        yield assertTrue(err == SpliceError.MissingSha256("foo"))
+      },
+      test("GitHub with no GitHub resolver fails") {
+        for
+          dir <- tempDir
+          err <- Splice
+            .resolve(
+              Seq(Splice.github("foo", "owner/repo", "1.0.0", "dist/foo.js").sha256("abcd")),
+              envAt(dir).copy(resolvers = Seq(Splice.jsDelivr, Splice.maven)),
+            )
+            .flip
+        yield assertTrue(err == SpliceError.NoResolver("foo", "github"))
+      },
+      test("GitHub tag tarball extracts the pinned path after stripping the root dir") {
+        val body = """export function greet() { return "ok"; }"""
+        ZIO.scoped {
+          for
+            packed <- ZIO.attempt(tarGz("repo-1.0.0", "dist/foo.js", body))
+            port   <- serveBytes("/owner/repo/archive/refs/tags/1.0.0.tar.gz", packed)
+            dir    <- tempDir
+            env = envAt(dir).copy(resolvers = Seq(localGithub(port)))
+            got <- Splice.resolve(
+              Seq(Splice.github("foo", "owner/repo", "1.0.0", "dist/foo.js").sha256(hex(packed))),
+              env,
+            )
+            text <- ZIO.attempt(Files.readString(got("foo")))
+          yield assertTrue(text == body)
+        }
+      },
+      test("GitHub 404 on the exact tag tries the v-prefixed tag") {
+        val body = """export function greet() { return "ok"; }"""
+        ZIO.scoped {
+          for
+            packed <- ZIO.attempt(tarGz("repo-1.0.0", "dist/foo.js", body))
+            port   <- serveBytes("/owner/repo/archive/refs/tags/v1.0.0.tar.gz", packed)
+            dir    <- tempDir
+            env = envAt(dir).copy(resolvers = Seq(localGithub(port)))
+            got <- Splice.resolve(
+              Seq(Splice.github("foo", "owner/repo", "1.0.0", "dist/foo.js").sha256(hex(packed))),
+              env,
+            )
+            text <- ZIO.attempt(Files.readString(got("foo")))
+          yield assertTrue(text == body)
+        }
+      },
+      test("GitHub wrong sha256 fails and does not fall across CDNs") {
+        val body = """export function greet() { return "ok"; }"""
+        ZIO.scoped {
+          for
+            packed <- ZIO.attempt(tarGz("repo-1.0.0", "dist/foo.js", body))
+            port   <- serveBytes("/owner/repo/archive/refs/tags/1.0.0.tar.gz", packed)
+            dir    <- tempDir
+            env = envAt(dir).copy(resolvers = Seq(localGithub(port), Splice.jsDelivr))
+            err <- Splice
+              .resolve(
+                Seq(Splice.github("foo", "owner/repo", "1.0.0", "dist/foo.js").sha256("0" * 64)),
+                env,
+              )
+              .flip
+          yield assertTrue(
+            err.isInstanceOf[SpliceError.ChecksumMismatch],
+            err.asInstanceOf[SpliceError.ChecksumMismatch].specifier == "foo",
+          )
+        }
+      },
+      test("GitHub archive missing path fails") {
+        val body = "export const x = 1;"
+        ZIO.scoped {
+          for
+            packed <- ZIO.attempt(tarGz("repo-1.0.0", "dist/other.js", body))
+            port   <- serveBytes("/owner/repo/archive/refs/tags/1.0.0.tar.gz", packed)
+            dir    <- tempDir
+            env = envAt(dir).copy(resolvers = Seq(localGithub(port)))
+            err <- Splice
+              .resolve(
+                Seq(Splice.github("foo", "owner/repo", "1.0.0", "dist/foo.js").sha256(hex(packed))),
+                env,
+              )
+              .flip
+          yield assertTrue(err.isInstanceOf[SpliceError.MissingArchivePath])
+        }
+      },
+      test("GitHub 404 on both tag URLs fails") {
+        ZIO.scoped {
+          for
+            port <- serveBytes("/nope.tar.gz", Array.emptyByteArray)
+            dir  <- tempDir
+            env = envAt(dir).copy(resolvers = Seq(localGithub(port)))
+            err <- Splice
+              .resolve(
+                Seq(Splice.github("foo", "owner/repo", "1.0.0", "dist/foo.js").sha256("0" * 64)),
+                env,
+              )
+              .flip
+          yield assertTrue(err.isInstanceOf[SpliceError.NotFound])
+        }
+      },
+      test("GitHub repository must be owner/repo") {
+        for
+          dir <- tempDir
+          err <- Splice
+            .resolve(
+              Seq(Splice.github("foo", "not-a-repo", "1.0.0", "dist/foo.js").sha256("0" * 64)),
+              envAt(dir).copy(resolvers = Seq(Splice.github)),
+            )
+            .flip
+        yield assertTrue(err.isInstanceOf[SpliceError.Io])
+      },
     )
 
   private def localCdn(port: Int): SpliceResolver =
     Splice.cdn("local") { (n, v, p) =>
       s"http://127.0.0.1:$port/npm/$n@$v/$p"
+    }
+
+  private def localGithub(port: Int): SpliceResolver =
+    Splice.githubArchive { (owner, repo, tag) =>
+      s"http://127.0.0.1:$port/$owner/$repo/archive/refs/tags/$tag.tar.gz"
     }
 
   private def envAt(dir: Path): ResolveEnv =
@@ -171,6 +296,9 @@ object ResolveSpec extends ZIOSpecDefault:
 
   private def serve(body: String): ZIO[Scope, Throwable, Int] =
     val bytes = body.getBytes(StandardCharsets.UTF_8)
+    serveBytes("/npm/foo@1.0.0/foo.js", bytes)
+
+  private def serveBytes(path: String, bytes: Array[Byte]): ZIO[Scope, Throwable, Int] =
     ZIO
       .acquireRelease(ZIO.attempt {
         val server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0)
@@ -178,7 +306,7 @@ object ResolveSpec extends ZIOSpecDefault:
           "/",
           (ex: HttpExchange) =>
             try
-              if ex.getRequestURI.getPath.endsWith("/foo.js") then
+              if ex.getRequestURI.getPath == path then
                 ex.sendResponseHeaders(200, bytes.length)
                 ex.getResponseBody.write(bytes)
               else ex.sendResponseHeaders(404, -1)
@@ -189,7 +317,22 @@ object ResolveSpec extends ZIOSpecDefault:
         server
       })(s => ZIO.succeed(s.stop(0)))
       .map(_.getAddress.getPort)
-  end serve
+  end serveBytes
+
+  private def tarGz(root: String, path: String, body: String): Array[Byte] =
+    val bytes = body.getBytes(StandardCharsets.UTF_8)
+    val baos  = new ByteArrayOutputStream
+    val tar   = new TarArchiveOutputStream(new GzipCompressorOutputStream(baos))
+    try
+      tar.setLongFileMode(TarArchiveOutputStream.LONGFILE_POSIX)
+      val entry = new TarArchiveEntry(s"$root/$path")
+      entry.setSize(bytes.length)
+      tar.putArchiveEntry(entry)
+      tar.write(bytes)
+      tar.closeArchiveEntry()
+    finally tar.close()
+    baos.toByteArray
+  end tarGz
 
   private def jarWith(dir: Path, name: String, version: String, path: String, body: String): Task[Path] =
     ZIO.attempt {

@@ -5,8 +5,11 @@ enablePlugins(ScalaJSPlugin)
 scalaJSUseMainModuleInitializer := true
 scalaJSLinkerConfig ~= { _.withModuleKind(ModuleKind.ESModule) }
 
-spliceLibs += Splice.file("foo", baseDirectory.value / "vendor" / "foo.js")
-spliceFastOutput := baseDirectory.value / "target" / "custom" / "app.js"
+spliceResolvers += Splice.githubArchive { (owner, repo, tag) =>
+  "http://127.0.0.1:" + StubGithub.port + "/" + owner + "/" + repo + "/archive/refs/tags/" + tag + ".tar.gz"
+}
+
+spliceLibs += Splice.github("foo", "owner/repo", "1.0.0", "dist/foo.js").sha256(StubGithub.sha256)
 
 lazy val checkSpliced = taskKey[Unit]("Fail if spliceFast left a bare foo specifier")
 
@@ -17,12 +20,4 @@ checkSpliced := {
     sys.error(s"leftover foo specifier in $f")
   if (!t.contains("__splice_foo"))
     sys.error(s"expected wrapped foo module in $f")
-  if (!t.contains("sourceMappingURL=app.js.map"))
-    sys.error(s"expected sourceMappingURL in $f")
-  val map = new File(f.getPath + ".map")
-  if (!map.exists)
-    sys.error(s"expected source map $map")
-  val m = IO.read(map)
-  if (!m.contains("\"sections\"") || !m.contains("fast-link"))
-    sys.error(s"expected indexed map pointing at private-link output in $map")
 }

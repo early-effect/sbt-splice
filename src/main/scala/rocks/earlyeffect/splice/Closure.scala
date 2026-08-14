@@ -9,6 +9,7 @@ import com.google.javascript.jscomp.{
   DiagnosticGroups,
   JSError,
   SourceFile,
+  SourceMap,
 }
 import zio.*
 
@@ -47,16 +48,32 @@ object Closure:
       |var globalThis;
       |""".stripMargin
 
-  def optimize(inputs: List[(String, String)]): IO[SpliceError, String] =
+  final case class Compiled(js: String, sourceMap: Option[String] = None)
+
+  def optimize(
+      inputs: List[(String, String)],
+      prefix: List[(String, String)] = Nil,
+      extraExterns: List[String] = Nil,
+      sourceMaps: Boolean = false,
+      sourceMapFile: String = "out.js",
+  ): IO[SpliceError, Compiled] =
+    val prefixJs = prefix.map(_._2).mkString
     ZIO
-      .attemptBlocking(lock.synchronized(compile(inputs)))
+      .attemptBlocking(lock.synchronized(compile(inputs, extraExterns, sourceMaps, sourceMapFile, prefixJs)))
       .mapError(e => SpliceError.Io(s"Closure: ${e.getMessage}"))
       .flatMap {
-        case Left(err) => ZIO.fail(err)
-        case Right(js) => ZIO.succeed(js)
+        case Left(err)       => ZIO.fail(err)
+        case Right(compiled) => ZIO.succeed(compiled)
       }
+  end optimize
 
-  def programDigest(linker: List[LinkerFile], libs: Map[String, Path], output: Path): String =
+  def programDigest(
+      linker: List[LinkerFile],
+      libs: Map[String, Path],
+      output: Path,
+      extern: Set[String] = Set.empty,
+      sourceMaps: Boolean = false,
+  ): String =
     val md                   = MessageDigest.getInstance("SHA-256")
     def add(s: String): Unit =
       md.update(s.getBytes(StandardCharsets.UTF_8))
@@ -64,6 +81,8 @@ object Closure:
     add(ScalaJSExterns)
     add(BrowserExterns)
     add(output.toAbsolutePath.normalize.toString)
+    add("extern:" + extern.toList.sorted.mkString(","))
+    add("maps:" + sourceMaps)
     linker.sortBy(_.label).foreach { f =>
       add(f.label)
       add(f.contents)
@@ -75,8 +94,9 @@ object Closure:
     md.digest.map("%02x".format(_)).mkString
   end programDigest
 
-  def cacheHit(stamp: Path, digest: String, output: Path): Boolean =
+  def cacheHit(stamp: Path, digest: String, output: Path, sourceMap: Option[Path] = None): Boolean =
     Files.isRegularFile(output) &&
+      sourceMap.forall(p => Files.isRegularFile(p)) &&
       Files.isRegularFile(stamp) &&
       Files.readString(stamp).trim == digest
 
@@ -85,7 +105,13 @@ object Closure:
     Files.writeString(stamp, digest)
     ()
 
-  private def compile(inputs: List[(String, String)]): Either[SpliceError, String] =
+  private def compile(
+      inputs: List[(String, String)],
+      extraExterns: List[String],
+      sourceMaps: Boolean,
+      sourceMapFile: String,
+      prefixJs: String,
+  ): Either[SpliceError, Compiled] =
     Compiler.setLoggingLevel(Level.OFF)
     val compiler = new Compiler()
     compiler.disableThreads()
@@ -101,10 +127,16 @@ object Closure:
     options.setWarningLevel(DiagnosticGroups.CHECK_REGEXP, CheckLevel.OFF)
     options.setWarningLevel(DiagnosticGroups.CHECK_TYPES, CheckLevel.OFF)
     options.setWarningLevel(DiagnosticGroups.CHECK_USELESS_CODE, CheckLevel.OFF)
+    if sourceMaps then
+      options.setSourceMapOutputPath(sourceMapFile)
+      options.setSourceMapFormat(SourceMap.Format.V3)
 
     val externs = new ArrayList[SourceFile](defaultExterns())
     externs.add(SourceFile.fromCode("ScalaJSExterns.js", ScalaJSExterns))
     externs.add(SourceFile.fromCode("SpliceBrowserExterns.js", BrowserExterns))
+    if extraExterns.nonEmpty then
+      val decls = extraExterns.map(n => s"var $n;").mkString("\n")
+      externs.add(SourceFile.fromCode("SpliceLibExterns.js", decls))
 
     val sources = new ArrayList[SourceFile](inputs.size)
     inputs.foreach { (name, code) =>
@@ -113,7 +145,19 @@ object Closure:
 
     val result = compiler.compile(externs, sources, options)
     if !result.success then Left(SpliceError.Closure(formatErrors(compiler)))
-    else Right(compiler.toSource)
+    else
+      val js  = prefixJs + compiler.toSource
+      val map =
+        if sourceMaps then
+          Option(compiler.getSourceMap).map { sm =>
+            sm.setStartingPosition(SourceMaps.lineOffset(prefixJs), 0)
+            val buf = new java.lang.StringBuilder
+            sm.appendTo(buf, sourceMapFile)
+            buf.toString
+          }
+        else None
+      Right(Compiled(js, map))
+    end if
   end compile
 
   @nowarn("cat=deprecation")

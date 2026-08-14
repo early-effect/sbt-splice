@@ -35,6 +35,7 @@ object ClosureSpec extends ZIOSpecDefault:
           Closure.cacheHit(stamp, "abc", out),
           !Closure.cacheHit(stamp, "other", out),
           !Closure.cacheHit(stamp, "abc", dir.resolve("missing.js")),
+          !Closure.cacheHit(stamp, "abc", out, Some(dir.resolve("missing.js.map"))),
         )
       },
       test("optimize is smaller than the concatenated inputs") {
@@ -50,8 +51,27 @@ object ClosureSpec extends ZIOSpecDefault:
         val linker = "const n = __splice_foo.used();"
         for got <- Closure.optimize(List("vendor.js" -> vendor, "linker.js" -> linker))
         yield assertTrue(
-          got.length < vendor.length + linker.length,
-          !got.contains("DEAD_CODE_MARKER"),
+          got.js.length < vendor.length + linker.length,
+          !got.js.contains("DEAD_CODE_MARKER"),
+        )
+      },
+      test("prefix chunks are prepended and extra extern names are not minified away") {
+        val prefix =
+          """const __splice_ext = (() => {
+            |  const module = { exports: {} };
+            |  module.exports.keep = function keep() { return "EXTERN_KEEP"; };
+            |  return module.exports;
+            |})();
+            |""".stripMargin
+        val linker = "const n = __splice_ext.keep();"
+        for got <- Closure.optimize(
+            inputs = List("linker.js" -> linker),
+            prefix = List("ext.js" -> prefix),
+            extraExterns = List("__splice_ext"),
+          )
+        yield assertTrue(
+          got.js.startsWith("const __splice_ext"),
+          got.js.contains("EXTERN_KEEP"),
         )
       },
     )

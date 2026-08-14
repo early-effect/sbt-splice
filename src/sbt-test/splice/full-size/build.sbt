@@ -14,7 +14,7 @@ lazy val checkSize = taskKey[Unit]("Fail unless spliceFull is smaller than unmin
 
 checkSize := {
   val fullOut   = spliceFull.value
-  val linkerDir = (Compile / fullLinkJS / scalaJSLinkerOutputDirectory).value
+  val linkerDir = baseDirectory.value / "target" / "splice" / "full-link"
   val vendor    = baseDirectory.value / "vendor" / "escape-string-regexp@5.0.0.js"
   val linkerLen = Option(linkerDir.listFiles).toList.flatten
     .filter(f => f.isFile && f.getName.endsWith(".js") && !f.getName.endsWith(".map"))
@@ -25,6 +25,10 @@ checkSize := {
   streams.value.log.info("spliceFull=" + got + " concat=" + concat)
   if (got >= concat) {
     sys.error("size budget: spliceFull=" + got + " not smaller than concat=" + concat)
+  }
+  val map = new File(fullOut.getPath + ".map")
+  if (map.exists) {
+    sys.error("spliceFull wrote a source map by default: " + map)
   }
   val t1 = fullOut.lastModified
   Thread.sleep(1000)

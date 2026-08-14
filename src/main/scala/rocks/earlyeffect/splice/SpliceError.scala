@@ -11,6 +11,8 @@ enum SpliceError derives CanEqual:
   case NoResolver(specifier: String, kind: String)
   case NotFound(specifier: String, detail: String)
   case MissingJarPath(specifier: String, jar: String, path: String)
+  case MissingArchivePath(specifier: String, archive: String, path: String)
+  case Unwrappable(file: String, reason: String)
   case Closure(detail: String)
   case Io(detail: String)
 
@@ -24,7 +26,7 @@ enum SpliceError derives CanEqual:
     case DuplicateLib(specifier) =>
       s"""sbt-splice: duplicate spliceLibs entry for "$specifier""""
     case MissingSha256(specifier) =>
-      s"""sbt-splice: CDN coordinate "$specifier" is missing sha256"""
+      s"""sbt-splice: coordinate "$specifier" is missing sha256"""
     case ChecksumMismatch(specifier, expected, actual) =>
       s"""sbt-splice: sha256 mismatch for "$specifier": expected $expected, got $actual"""
     case NoResolver(specifier, kind) =>
@@ -33,6 +35,10 @@ enum SpliceError derives CanEqual:
       s"""sbt-splice: could not fetch "$specifier": $detail"""
     case MissingJarPath(specifier, jar, path) =>
       s"""sbt-splice: jar for "$specifier" ($jar) has no $path"""
+    case MissingArchivePath(specifier, archive, path) =>
+      s"""sbt-splice: archive for "$specifier" ($archive) has no $path"""
+    case Unwrappable(file, reason) =>
+      s"sbt-splice: could not wrap $file: $reason"
     case Closure(detail) =>
       s"sbt-splice: Closure compiler failed:\n$detail"
     case Io(detail) =>
