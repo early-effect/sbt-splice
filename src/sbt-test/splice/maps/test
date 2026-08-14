@@ -1,0 +1,3 @@
+# @JSImport("foo") plus vendored foo.js: spliceFast leaves no bare foo specifier.
+> checkSpliced
+$ exists target/custom/app.js

@@ -2,6 +2,7 @@ val scala3Version   = "3.8.4"
 val zioVersion      = "2.1.26"
 val specularVersion = "0.12.1"
 val scalaJsVersion  = "1.22.0"
+val chekhovVersion  = "0.0.3"
 
 scalaVersion         := scala3Version
 organization         := "rocks.earlyeffect"
@@ -42,13 +43,11 @@ zipxJavaVersion      := JdkVersion("25")
 zipxWorkflowDispatch := true
 zipxScalaSteward     := true
 zipxCapabilities += zipxTasks.once(Fmt, scalafmtCheckAll)
-zipxCapabilities += Capability.once(
-  name = Capability.TestName,
-  command = zipxTasks.session(testFull, scripted),
-  needsCapabilities = List(Fmt),
-)
 zipxCapabilities += ZipxCentral.release
 zipxCapabilities += ZipxDocs.pages()
+zipxEnv := Map(
+  "PLAYWRIGHT_BROWSERS_PATH" -> EnvValue.typed(Expr.github("workspace") ++ Expr.lit("/target/ms-playwright"))
+)
 
 lazy val root = project
   .in(file("."))
@@ -94,13 +93,37 @@ lazy val docs = project
     specularSiteDirectory  := (LocalRootProject / baseDirectory).value / "target" / "site",
     specularDisplayVersion := {
       val v = (ThisBuild / version).value
-      if (v.endsWith("-ci") || v.endsWith("-SNAPSHOT")) then {
+      if (v.endsWith("-ci") || v.endsWith("-SNAPSHOT"))
         previousStableVersion.value.getOrElse("<version>")
-      }
-      else {
+      else
         v
-      }
     },
   )
+
+// Browser suites. Not aggregated so local `testFull` stays Node-free; CI runs `e2e/testFull`.
+lazy val e2e = project
+  .in(file("e2e"))
+  .dependsOn(root % "compile->compile;test->test")
+  .settings(
+    name           := "sbt-splice-e2e",
+    publish / skip := true,
+    scalacOptions ++= Seq("-deprecation", "-feature", "-Wunused:all"),
+    libraryDependencies ++= Seq(
+      "dev.zio"           %% "zio-test"         % zioVersion     % Test,
+      "dev.zio"           %% "zio-test-sbt"     % zioVersion     % Test,
+      "rocks.earlyeffect" %% "chekhov-zio-test" % chekhovVersion % Test,
+      "rocks.earlyeffect" %% "chekhov-driver"   % chekhovVersion % Test,
+    ),
+    testFrameworks += new TestFramework("zio.test.sbt.ZTestFramework"),
+    chekhovBrowser := "firefox",
+  )
+
+zipxCapabilities += Capability
+  .once(
+    name = Capability.TestName,
+    command = zipxTasks.session(chekhovInstall, testFull, e2e / testFull, scripted),
+    needsCapabilities = List(Fmt),
+  )
+  .withNodeVersion(NodeVersion("24"))
 
 addCommandAlias("release", "; publishSigned; sonaRelease")

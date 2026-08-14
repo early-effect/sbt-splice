@@ -33,9 +33,9 @@ Neither task reimplements the Scala.js linker.
     ),
     section("Status")(
       md"""
-Phase 0 is a skeleton: the plugin loads, the tasks depend on the linker, and they
-fail with a clear "not implemented" until Phase 1 splices file-mapped specifiers.
-See [ROADMAP.md](https://github.com/early-effect/sbt-splice/blob/main/ROADMAP.md)
+Phase 1 maps bare specifiers to files on disk after `fastLinkJS`. Maven/WebJar/CDN
+resolvers are Phase 2. See
+[ROADMAP.md](https://github.com/early-effect/sbt-splice/blob/main/ROADMAP.md)
 for the rest of the plan.
 """
     ),

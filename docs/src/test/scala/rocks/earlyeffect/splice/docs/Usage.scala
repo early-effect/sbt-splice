@@ -30,13 +30,18 @@ scalaJSLinkerConfig ~= { _.withModuleKind(ModuleKind.ESModule) }
     ),
     section("Tasks")(
       md"""
-- `spliceFast` — depends on `Compile / fastLinkJS`, then splices. Phase 0 fails
-  with "not implemented" after the link.
-- `spliceFull` — depends on `Compile / fullLinkJS`, then splices and (later)
-  Closure-optimizes the combined file.
+- `spliceFast` — depends on `Compile / fastLinkJS`, then splices mapped files into
+  `spliceFastOutput` (default `target/splice/fast.js`).
+- `spliceFull` — depends on `Compile / fullLinkJS` and splices the same way.
+  Closure on the combined file is Phase 3.
 
-Specifier maps, resolvers, and emit paths land in later phases. Until then the
-tasks exist so builds and scripted tests can wire them.
+Map bare specifiers to vendored files:
+
+```scala
+spliceLibs += Splice.file("foo", baseDirectory.value / "vendor" / "foo.js")
+```
+
+Unresolved specifiers fail the task and name the specifier and the referring file.
 """
     ),
   )

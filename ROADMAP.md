@@ -15,8 +15,8 @@ GitHub: `early-effect/sbt-splice`. Local: `~/projects/fun/sbt-splice`. Coordinat
 
 | Phase | What ships | Status |
 |---|---|---|
-| 0 | sbt 2 plugin skeleton, publish identity, empty task | not started |
-| 1 | File-mapped specifiers after `fastLinkJS`; unresolved import fails | not started |
+| 0 | sbt 2 plugin skeleton, publish identity, empty task | done |
+| 1 | File-mapped specifiers after `fastLinkJS`; unresolved import fails | done |
 | 2 | Resolvers + Coursier cache: Maven/WebJar, jsDelivr, unpkg | not started |
 | 3 | Full optimize via Scala.js minify + post-link Closure; size budget | not started |
 | 4 | Scripted `@JSImport` of a vendored library runs without Node | not started |
@@ -221,16 +221,16 @@ Each phase is independently shippable: compiles, tests, can be published.
 
 Checkable:
 
-- [ ] sbt 2.x only (`project/build.properties`), Scala 3.8 only, `SbtPlugin`. No sbt 1 / Scala 2 cross.
-- [ ] `organization := "rocks.earlyeffect"`, `organizationName := "Early Effect"`, Apache-2.0, `versionScheme := Some("early-semver")`
-- [ ] `homepage` / `scmInfo` point at `github.com/early-effect/sbt-splice`
-- [ ] zipx: latest `sbt-zipx` from Central, `zipxJavaVersion := JdkVersion("25")`, fmt `once` + verify (`testFull` and `scripted`), `ZipxCentral.release`, `ZipxDocs.pages`
-- [ ] Specular docs module (plugin artifact kind), theme like other early-effect plugins
-- [ ] ZIO core + zio-test; AutoPlugin is a thin wrapper. At least one zio-test suite in Phase 0 (even if it only asserts the empty program's shape)
-- [ ] `usePgpKeyHex(sys.env.getOrElse("PGP_KEY_HEX", "MISSING_KEY_HEX"))`, `publishTo` Central Portal (`localStaging` / snapshots)
-- [ ] AutoPlugin that requires Scala.js, exposes `spliceFast` / `spliceFull` depending on the linker; empty tasks fail with a clear "not implemented" or no-op copy until Phase 1
-- [ ] Scripted test: plugin loads, task runs, no Node involved
-- [ ] Repo in `early-effect` so org publish secrets inherit; no hand-written `release.yml`
+- [x] sbt 2.x only (`project/build.properties`), Scala 3.8 only, `SbtPlugin`. No sbt 1 / Scala 2 cross.
+- [x] `organization := "rocks.earlyeffect"`, `organizationName := "Early Effect"`, Apache-2.0, `versionScheme := Some("early-semver")`
+- [x] `homepage` / `scmInfo` point at `github.com/early-effect/sbt-splice`
+- [x] zipx: latest `sbt-zipx` from Central, `zipxJavaVersion := JdkVersion("25")`, fmt `once` + verify (`testFull` and `scripted`), `ZipxCentral.release`, `ZipxDocs.pages`
+- [x] Specular docs module (plugin artifact kind), theme like other early-effect plugins
+- [x] ZIO core + zio-test; AutoPlugin is a thin wrapper. At least one zio-test suite in Phase 0 (even if it only asserts the empty program's shape)
+- [x] `usePgpKeyHex(sys.env.getOrElse("PGP_KEY_HEX", "MISSING_KEY_HEX"))`, `publishTo` Central Portal (`localStaging` / snapshots)
+- [x] AutoPlugin that requires Scala.js, exposes `spliceFast` / `spliceFull` depending on the linker; empty tasks fail with a clear "not implemented" or no-op copy until Phase 1
+- [x] Scripted test: plugin loads, task runs, no Node involved
+- [x] Repo in `early-effect` so org publish secrets inherit; no hand-written `release.yml`
 
 No specifier resolution yet. No Closure yet.
 
@@ -238,15 +238,15 @@ No specifier resolution yet. No Closure yet.
 
 Checkable:
 
-- [ ] Setting: specifier → `File` (ESM or CJS on disk)
-- [ ] `spliceFast` rewrites or inlines those specifiers in `fastLinkJS` output
-- [ ] Unresolved bare specifier fails the task (message names specifier and referring file)
-- [ ] Output contains no leftover `from "foo"` / `require("foo")` for mapped names
-- [ ] Several specifiers in one project (two mapped files) splice together
-- [ ] Output path is configurable
-- [ ] Scripted: `@JSImport("foo")` plus a tiny vendored `foo.js`; output contains no leftover bare specifier for `foo`
-- [ ] Scripted: missing mapping fails
-- [ ] CI and scripted still have no Node on `PATH`
+- [x] Setting: specifier → `File` (ESM or CJS on disk)
+- [x] `spliceFast` rewrites or inlines those specifiers in `fastLinkJS` output
+- [x] Unresolved bare specifier fails the task (message names specifier and referring file)
+- [x] Output contains no leftover `from "foo"` / `require("foo")` for mapped names
+- [x] Several specifiers in one project (two mapped files) splice together
+- [x] Output path is configurable
+- [x] Scripted: `@JSImport("foo")` plus a tiny vendored `foo.js`; output contains no leftover bare specifier for `foo`
+- [x] Scripted: missing mapping fails
+- [x] Scripted still has no Node on `PATH`. The plugin never spawns Node. CI Verify runs Chekhov Firefox via `chekhovInstall` (Node 24; browsers under `target/ms-playwright`)
 
 ### Phase 2: resolvers + Coursier cache (Maven / WebJar / CDN)
 

@@ -9,6 +9,16 @@ Coordinate: `rocks.earlyeffect` % `sbt-splice`
 addSbtPlugin("rocks.earlyeffect" % "sbt-splice" % "<version>")
 ```
 
+Map a bare specifier to a vendored file, then run `spliceFast` or `spliceFull`:
+
+```scala
+enablePlugins(ScalaJSPlugin)
+scalaJSLinkerConfig ~= { _.withModuleKind(ModuleKind.ESModule) }
+spliceLibs += Splice.file("foo", baseDirectory.value / "vendor" / "foo.js")
+```
+
+Output defaults to `target/splice/fast.js` and `target/splice/full.js`. Unresolved specifiers fail the task. Maven/WebJar/CDN resolvers are Phase 2.
+
 The plugin is not released yet. Design and phases: [ROADMAP.md](ROADMAP.md).
 
 ## License
