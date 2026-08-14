@@ -47,16 +47,25 @@ object Closure:
       |var globalThis;
       |""".stripMargin
 
-  def optimize(inputs: List[(String, String)]): IO[SpliceError, String] =
+  def optimize(
+      inputs: List[(String, String)],
+      prefix: List[(String, String)] = Nil,
+      extraExterns: List[String] = Nil,
+  ): IO[SpliceError, String] =
     ZIO
-      .attemptBlocking(lock.synchronized(compile(inputs)))
+      .attemptBlocking(lock.synchronized(compile(inputs, extraExterns)))
       .mapError(e => SpliceError.Io(s"Closure: ${e.getMessage}"))
       .flatMap {
         case Left(err) => ZIO.fail(err)
-        case Right(js) => ZIO.succeed(js)
+        case Right(js) => ZIO.succeed(prefix.map(_._2).mkString + js)
       }
 
-  def programDigest(linker: List[LinkerFile], libs: Map[String, Path], output: Path): String =
+  def programDigest(
+      linker: List[LinkerFile],
+      libs: Map[String, Path],
+      output: Path,
+      extern: Set[String] = Set.empty,
+  ): String =
     val md                   = MessageDigest.getInstance("SHA-256")
     def add(s: String): Unit =
       md.update(s.getBytes(StandardCharsets.UTF_8))
@@ -64,6 +73,7 @@ object Closure:
     add(ScalaJSExterns)
     add(BrowserExterns)
     add(output.toAbsolutePath.normalize.toString)
+    add("extern:" + extern.toList.sorted.mkString(","))
     linker.sortBy(_.label).foreach { f =>
       add(f.label)
       add(f.contents)
@@ -85,7 +95,10 @@ object Closure:
     Files.writeString(stamp, digest)
     ()
 
-  private def compile(inputs: List[(String, String)]): Either[SpliceError, String] =
+  private def compile(
+      inputs: List[(String, String)],
+      extraExterns: List[String],
+  ): Either[SpliceError, String] =
     Compiler.setLoggingLevel(Level.OFF)
     val compiler = new Compiler()
     compiler.disableThreads()
@@ -105,6 +118,9 @@ object Closure:
     val externs = new ArrayList[SourceFile](defaultExterns())
     externs.add(SourceFile.fromCode("ScalaJSExterns.js", ScalaJSExterns))
     externs.add(SourceFile.fromCode("SpliceBrowserExterns.js", BrowserExterns))
+    if extraExterns.nonEmpty then
+      val decls = extraExterns.map(n => s"var $n;").mkString("\n")
+      externs.add(SourceFile.fromCode("SpliceLibExterns.js", decls))
 
     val sources = new ArrayList[SourceFile](inputs.size)
     inputs.foreach { (name, code) =>

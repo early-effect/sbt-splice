@@ -22,7 +22,7 @@ object Resolve:
 
   private def one(lib: SpliceLib, env: ResolveEnv): IO[SpliceError, Path] =
     lib match
-      case SpliceLib.File(spec, file) =>
+      case SpliceLib.File(spec, file, _) =>
         val path = file.toPath
         ZIO.unless(Files.isRegularFile(path))(ZIO.fail(SpliceError.MissingFile(spec, path.toString))).as(path)
       case c: SpliceLib.Cdn    => cdn(c, env)

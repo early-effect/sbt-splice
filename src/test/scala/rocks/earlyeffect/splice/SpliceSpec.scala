@@ -212,6 +212,123 @@ object SpliceSpec extends ZIOSpecDefault:
             case _ => false
         )
       },
+      test("wraps CJS without rewriting exports and the binding is callable") {
+        for
+          dir <- tempDir
+          foo = dir.resolve("foo.js")
+          _ <- write(foo, """module.exports.greet = function greet() { return "cjs"; };""")
+          out = dir.resolve("splice.js")
+          _ <- Splice.run(
+            SpliceInput(
+              linker = List(
+                LinkerFile(
+                  "main.js",
+                  """import * as Foo from "foo";
+                    |document.getElementById("out").textContent = Foo.greet();
+                    |""".stripMargin,
+                )
+              ),
+              libs = Map("foo" -> foo),
+              output = out,
+            )
+          )
+          body <- ZIO.attempt(Files.readString(out))
+        yield assertTrue(
+          body.contains("module.exports.greet"),
+          !body.contains("export "),
+          JsHost.evalExpr(body, "document.getElementById('out').textContent") == "cjs",
+        )
+      },
+      test("wraps UMD through the CJS branch") {
+        val umd =
+          """(function (root, factory) {
+            |  if (typeof exports === "object" && typeof module !== "undefined") module.exports = factory();
+            |  else root.umdFoo = factory();
+            |}(typeof globalThis !== "undefined" ? globalThis : this, function () {
+            |  return { greet: function greet() { return "umd"; } };
+            |}));
+            |""".stripMargin
+        for
+          dir <- tempDir
+          foo = dir.resolve("foo.js")
+          _ <- write(foo, umd)
+          out = dir.resolve("splice.js")
+          _ <- Splice.run(
+            SpliceInput(
+              linker = List(
+                LinkerFile(
+                  "main.js",
+                  """import * as Foo from "foo";
+                    |document.getElementById("out").textContent = Foo.greet();
+                    |""".stripMargin,
+                )
+              ),
+              libs = Map("foo" -> foo),
+              output = out,
+            )
+          )
+          body <- ZIO.attempt(Files.readString(out))
+        yield assertTrue(
+          JsKind.classify(umd) == JsKind.Umd,
+          JsHost.evalExpr(body, "document.getElementById('out').textContent") == "umd",
+        )
+        end for
+      },
+      test("refuses export star from") {
+        for
+          dir <- tempDir
+          foo = dir.resolve("foo.js")
+          _ <- write(foo, """export * from "./bar.js";""")
+          out = dir.resolve("splice.js")
+          err <- Splice
+            .run(
+              SpliceInput(
+                linker = List(LinkerFile("main.js", """import * as Foo from "foo";""")),
+                libs = Map("foo" -> foo),
+                output = out,
+              )
+            )
+            .flip
+        yield assertTrue(
+          err match
+            case SpliceError.Unwrappable(file, reason) =>
+              file == "foo.js" && reason.contains("export * from")
+            case _ => false
+        )
+      },
+      test("extern libs still wrap for fast and survive Closure unused-code DCE") {
+        for
+          dir <- tempDir
+          foo = dir.resolve("foo.js")
+          _ <- write(
+            foo,
+            """export function used() { return 1; }
+              |export function unused() { return "EXTERN_DEAD_CODE"; }
+              |""".stripMargin,
+          )
+          out = dir.resolve("splice.js")
+          _ <- Splice.run(
+            SpliceInput(
+              linker = List(
+                LinkerFile(
+                  "main.js",
+                  """import { used } from "foo";
+                    |used();
+                    |""".stripMargin,
+                )
+              ),
+              libs = Map("foo" -> foo),
+              output = out,
+              optimize = true,
+              extern = Set("foo"),
+            )
+          )
+          body <- ZIO.attempt(Files.readString(out))
+        yield assertTrue(
+          body.contains("EXTERN_DEAD_CODE"),
+          body.contains("__splice_foo"),
+        )
+      },
     )
 
   private def vendorBytes(name: String): Array[Byte] =

@@ -30,7 +30,7 @@ an ascent example) still follow publish. See §6.
 | Wave | What | Status |
 |---|---|---|
 | rename | Plugin lives in `rocks.earlyeffect.splice` (no `sbt` package segment) | done |
-| modules | ESM / CJS / UMD / global wrap; `.extern` Closure hatch | not started |
+| modules | ESM / CJS / UMD / global wrap; `.extern` Closure hatch | done |
 | ir | Private link; `@JSImport` → Global in IR; no linker-JS regex rewrite | not started |
 | maps | Configurable source maps (fast on, full off by default) | not started |
 | github | Tag tarball resolver, sha256 pin | not started |
@@ -310,7 +310,7 @@ The phase-0–4 internals work. Remaining **in this repo** is the pre-release
 table at the top (module wrap, IR remap, source maps, GitHub tarballs). Central
 publish waits until that table is done. Consumers adopt from Central after that.
 
-1. **Finish the pre-release waves** (rename is done; see the table).
+1. **Finish the pre-release waves** (rename and modules are done; see the table).
 2. **First Central publish** of `rocks.earlyeffect` % `sbt-splice`. Until that
    exists, consumers cannot depend on it.
 3. **preactile docs client.** `docs / specularJsLink` stops calling `npm install`
@@ -335,6 +335,12 @@ sbt-splice on its own after publish.
   `FileCache` into `csrCacheDirectory`. Not `ModuleID.from`.
 - **CDN search.** A 404 may try the next enabled CDN. A hash mismatch fails
   immediately; do not fall across CDNs on a bad pin.
+- **Module wrap.** ESM is rewritten onto `exports`. CJS and UMD run inside the
+  same `module.exports` IIFE without that rewrite. AMD-only `define()`,
+  `export * from`, and `import.meta` fail the task.
+- **`.extern`.** Closure hatch only. Both tasks wrap and prepend (including a
+  pure-global library). `spliceFull` does not pass that chunk as a Closure
+  input; `__splice_*` is an extra extern so the rest of the program can call it.
 - **Module shape.** `spliceFull` is one classic script. `spliceFast` may still
   look like ESM. Whether a production `<script type="module">` can load full is a
   preactile question, not a new splice phase.
@@ -355,8 +361,6 @@ sbt-splice on its own after publish.
   a measured load-time or cache-busting reason.
 - **GitHub release tarballs.** Extra resolver. jsDelivr / unpkg / WebJars cover
   typical packages.
-- **`extern` hatch** for a library advanced mode will miscompile. Prefer fail
-  until a real library needs it.
 - **IR remap** if post-link rewrite proves fragile. Default stays post-link on
   emitted JS.
 

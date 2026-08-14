@@ -120,8 +120,9 @@ object SplicePlugin extends AutoPlugin:
       extractDir = extractDir,
     )
     val libMap = RunSplice(Splice.resolve(libs, env))
+    val extern = libs.collect { case l if l.isExtern => l.specifier }.toSet
     val digest =
-      if optimize then Some(Closure.programDigest(linker, libMap, out.toPath))
+      if optimize then Some(Closure.programDigest(linker, libMap, out.toPath, extern))
       else None
     val hit = digest.exists(d => cacheStamp.exists(s => Closure.cacheHit(s.toPath, d, out.toPath)))
     if !hit then
@@ -132,6 +133,7 @@ object SplicePlugin extends AutoPlugin:
             libs = libMap,
             output = out.toPath,
             optimize = optimize,
+            extern = extern,
           )
         )
       )

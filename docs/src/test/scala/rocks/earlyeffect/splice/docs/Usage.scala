@@ -53,6 +53,12 @@ CDN coordinates require `sha256`. Maven/WebJar uses the project's `resolvers`
 `Splice.jsDelivr` or `Splice.unpkg` to opt into CDNs. Unresolved specifiers fail
 the task and name the specifier and the referring file.
 
+Vendor files may be ESM, CJS, or UMD; splice wraps them so `@JSImport` sees a
+namespace. AMD-only `define()`, `export * from`, and `import.meta` fail the task.
+`.extern` on a `spliceLibs` entry is a Closure hatch: `spliceFast` still wraps
+and prepends the library; `spliceFull` does not feed that chunk to advanced
+mode.
+
 `spliceFast` is readable spliced JS. `spliceFull` is one Closure-advanced script.
 The plugin writes a file; it does not ship a JS engine. This repo's tests execute
 that file on GraalJS (JVM, test classpath only) to prove a real `@JSImport` runs

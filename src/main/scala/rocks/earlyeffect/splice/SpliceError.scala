@@ -11,6 +11,7 @@ enum SpliceError derives CanEqual:
   case NoResolver(specifier: String, kind: String)
   case NotFound(specifier: String, detail: String)
   case MissingJarPath(specifier: String, jar: String, path: String)
+  case Unwrappable(file: String, reason: String)
   case Closure(detail: String)
   case Io(detail: String)
 
@@ -33,6 +34,8 @@ enum SpliceError derives CanEqual:
       s"""sbt-splice: could not fetch "$specifier": $detail"""
     case MissingJarPath(specifier, jar, path) =>
       s"""sbt-splice: jar for "$specifier" ($jar) has no $path"""
+    case Unwrappable(file, reason) =>
+      s"sbt-splice: could not wrap $file: $reason"
     case Closure(detail) =>
       s"sbt-splice: Closure compiler failed:\n$detail"
     case Io(detail) =>

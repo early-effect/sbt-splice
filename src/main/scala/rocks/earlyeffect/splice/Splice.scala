@@ -50,50 +50,52 @@ object Splice:
       spliced = packed.concat
       _    <- leftover(spliced, input.libs.keys, input.output)
       body <-
-        if input.optimize then Closure.optimize(packed.inputs)
+        if input.optimize then
+          Closure.optimize(
+            inputs = packed.bundled,
+            prefix = packed.prefix,
+            extraExterns = packed.externNames,
+          )
         else ZIO.succeed(spliced)
       _ <- write(input.output, body)
     yield input.output
 
-  private final case class Packed(inputs: List[(String, String)]):
-    def concat: String = inputs.map(_._2).mkString
+  private final case class Packed(
+      bundled: List[(String, String)],
+      prefix: List[(String, String)],
+      externNames: List[String],
+  ):
+    def concat: String = (prefix ++ bundled).map(_._2).mkString
 
   private def pack(input: SpliceInput): IO[SpliceError, Packed] =
     ZIO.suspendSucceed {
-      val ids    = mutable.Map.empty[String, String]
-      val blocks = mutable.ArrayBuffer.empty[(String, String)]
+      val ids     = mutable.Map.empty[String, String]
+      val bundled = mutable.ArrayBuffer.empty[(String, String)]
+      val prefix  = mutable.ArrayBuffer.empty[(String, String)]
 
-      def wrap(spec: String, path: Path): IO[SpliceError, String] =
+      def wrap(spec: String, path: Path, isExtern: Boolean): IO[SpliceError, String] =
         ids.get(spec) match
           case Some(id) => ZIO.succeed(id)
           case None     =>
             if !Files.isRegularFile(path) then ZIO.fail(SpliceError.MissingFile(spec, path.toString))
             else
-              val id = JsModules.ident(spec)
+              val id   = JsModules.ident(spec)
+              val file = path.getFileName.toString
               ids.update(spec, id)
               for
                 raw <- read(path)
-                _   <- unresolvedIn(raw, path.getFileName.toString, input.libs)
+                _   <- refuseUnwrappable(raw, file)
+                _   <- unresolvedIn(raw, file, input.libs)
                 rels = JsModules.specifiers(raw).filter(JsModules.isRelative)
                 relMap <- ZIO.foreach(rels) { rel =>
                   val resolved = Option(path.getParent).getOrElse(path).resolve(rel).normalize
-                  wrap(resolved.toString, resolved).map(rel -> _)
+                  wrap(resolved.toString, resolved, isExtern).map(rel -> _)
                 }
-                modules   = input.libs.keys.map(s => s -> JsModules.ident(s)).toMap ++ relMap.toMap ++ ids.toMap
-                rewritten = JsModules.rewriteExports(JsModules.rewrite(raw, modules))
-                _ <- ZIO.when(
-                  JsModules.leftoverExports(rewritten) ||
-                    rewritten.linesIterator.exists(l => l.trim.startsWith("import "))
-                )(ZIO.fail(SpliceError.Io(s"could not wrap exports/imports in ${path.getFileName}")))
+                modules = input.libs.keys.map(s => s -> JsModules.ident(s)).toMap ++ relMap.toMap ++ ids.toMap
+                body <- prepareBody(raw, modules, file)
               yield
-                blocks += spec ->
-                  s"""const $id = (() => {
-                     |  const module = { exports: {} };
-                     |  const exports = module.exports;
-                     |$rewritten
-                     |  return module.exports;
-                     |})();
-                     |""".stripMargin
+                val dest = if isExtern then prefix else bundled
+                dest += spec -> wrapIife(id, body)
                 id
               end for
 
@@ -101,11 +103,43 @@ object Splice:
         _ <- ZIO.foreachDiscard(input.linker): file =>
           unresolvedIn(file.contents, file.label, input.libs)
         _ <- ZIO.foreachDiscard(input.libs.toList.sortBy(_._1)): (spec, path) =>
-          wrap(spec, path)
+          wrap(spec, path, input.extern.contains(spec))
         rewritten = input.linker.map(f => JsModules.rewrite(f.contents, ids.toMap)).mkString("\n")
         linkerJs  = if input.optimize then JsModules.dropExports(rewritten) else rewritten
-      yield Packed(blocks.toList :+ ("linker.js" -> linkerJs))
+        bundledJs = bundled.toList :+ ("linker.js" -> linkerJs)
+        names     = input.extern.toList.sorted.map(JsModules.ident)
+      yield Packed(bundledJs, prefix.toList, names)
+      end for
     }
+
+  private def refuseUnwrappable(raw: String, file: String): IO[SpliceError, Unit] =
+    if """export\s*\*\s*from""".r.findFirstIn(raw).isDefined then
+      ZIO.fail(SpliceError.Unwrappable(file, "export * from is not supported; map nested specifiers"))
+    else if raw.contains("import.meta") then ZIO.fail(SpliceError.Unwrappable(file, "import.meta is not supported"))
+    else if raw.contains("define(") && !raw.contains("typeof exports") then
+      ZIO.fail(SpliceError.Unwrappable(file, "AMD-only define() with no CJS branch"))
+    else ZIO.unit
+
+  private def prepareBody(raw: String, modules: Map[String, String], file: String): IO[SpliceError, String] =
+    val imported = JsModules.rewrite(raw, modules)
+    val kind     = JsKind.classify(raw)
+    val body     =
+      kind match
+        case JsKind.Esm => JsModules.rewriteExports(imported)
+        case _          => imported
+    if JsModules.leftoverExports(body) || body.linesIterator.exists(l => l.trim.startsWith("import "))
+    then ZIO.fail(SpliceError.Unwrappable(file, s"leftover export/import after $kind wrap"))
+    else ZIO.succeed(body)
+  end prepareBody
+
+  private def wrapIife(id: String, body: String): String =
+    s"""const $id = (() => {
+       |  const module = { exports: {} };
+       |  const exports = module.exports;
+       |$body
+       |  return module.exports;
+       |})();
+       |""".stripMargin
 
   private def checkLibFiles(libs: Map[String, Path]): IO[SpliceError, Unit] =
     ZIO.foreachDiscard(libs.toList): (spec, path) =>
