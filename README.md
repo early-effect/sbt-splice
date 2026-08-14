@@ -22,7 +22,8 @@ spliceLibs += Splice.lib("preact", "10.26.4", "dist/preact.module.js").sha256("â
 
 Output defaults to `target/splice/fast.js` and `target/splice/full.js`. Unresolved
 specifiers fail the task. CDN fetches require sha256; Maven/WebJar uses project
-`resolvers`.
+`resolvers`. `spliceFull` runs Closure advanced on the spliced file (one script,
+no source map yet).
 
 The plugin is not released yet. Design and phases: [ROADMAP.md](ROADMAP.md).
 

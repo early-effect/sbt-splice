@@ -44,5 +44,17 @@ object JsModulesSpec extends ZIOSpecDefault:
           !out.contains("export "),
         )
       },
+      test("dropExports removes ES module export lines") {
+        val js =
+          """const x = 1;
+            |export { Hello as Hello };
+            |export{Foo};
+            |""".stripMargin
+        val out = JsModules.dropExports(js)
+        assertTrue(
+          out.contains("const x = 1;"),
+          !out.contains("export"),
+        )
+      },
     )
 end JsModulesSpec

@@ -83,4 +83,13 @@ object JsModules:
       .replaceAll("""export\s+function\s+(\w+)""", "exports.$1 = function $1")
       .replaceAll("""export\s+class\s+(\w+)""", "exports.$1 = class $1")
       .replaceAll("""export\s+(?:const|let|var)\s+(\w+)\s*=""", "exports.$1 =")
+
+  /** Drop ES module export lines so Closure can compile a script. */
+  def dropExports(js: String): String =
+    js.linesIterator
+      .filterNot { line =>
+        val t = line.trim
+        t.startsWith("export ") || t.startsWith("export{") || t.startsWith("export*")
+      }
+      .mkString("\n")
 end JsModules

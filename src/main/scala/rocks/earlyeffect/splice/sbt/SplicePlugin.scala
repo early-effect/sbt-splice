@@ -26,7 +26,7 @@ object SplicePlugin extends AutoPlugin:
       "Splice pinned JS into fastLinkJS output (development)."
     )
     val spliceFull = taskKey[File](
-      "Splice pinned JS into fullLinkJS output (production; Closure lands in Phase 3)."
+      "Splice pinned JS into fullLinkJS output, then Closure-advanced (production)."
     )
     export rocks.earlyeffect.splice.{Splice, SpliceLib, SpliceResolver}
     export rocks.earlyeffect.splice.SpliceLib.sha256
@@ -74,6 +74,8 @@ object SplicePlugin extends AutoPlugin:
         cacheDir = csrCacheDirectory.value.toPath,
         localOnly = offline.value,
         extractDir = (baseDirectory.value / "target" / "splice" / "extracted").toPath,
+        optimize = false,
+        cacheStamp = None,
       )
     },
     spliceFull := Def.uncached {
@@ -88,6 +90,8 @@ object SplicePlugin extends AutoPlugin:
         cacheDir = csrCacheDirectory.value.toPath,
         localOnly = offline.value,
         extractDir = (baseDirectory.value / "target" / "splice" / "extracted").toPath,
+        optimize = true,
+        cacheStamp = Some(streams.value.cacheDirectory / "splice-full-digest"),
       )
     },
   )
@@ -101,6 +105,8 @@ object SplicePlugin extends AutoPlugin:
       cacheDir: Path,
       localOnly: Boolean,
       extractDir: Path,
+      optimize: Boolean,
+      cacheStamp: Option[File],
   ): File =
     val linker =
       Option(dir.listFiles).toList.flatten
@@ -115,15 +121,26 @@ object SplicePlugin extends AutoPlugin:
       extractDir = extractDir,
     )
     val libMap = RunSplice(Splice.resolve(libs, env))
-    RunSplice(
-      Splice.run(
-        SpliceInput(
-          linker = linker,
-          libs = libMap,
-          output = out.toPath,
+    val digest =
+      if optimize then Some(Closure.programDigest(linker, libMap, out.toPath))
+      else None
+    val hit = digest.exists(d => cacheStamp.exists(s => Closure.cacheHit(s.toPath, d, out.toPath)))
+    if !hit then
+      RunSplice(
+        Splice.run(
+          SpliceInput(
+            linker = linker,
+            libs = libMap,
+            output = out.toPath,
+            optimize = optimize,
+          )
         )
       )
-    )
+      for
+        stamp <- cacheStamp
+        d     <- digest
+      do Closure.storeCache(stamp.toPath, d)
+    end if
     out
   end runSplice
 

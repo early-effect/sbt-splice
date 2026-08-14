@@ -1,0 +1,4 @@
+# spliceFull is smaller than unminified concat of fullLinkJS plus the vendor file.
+# A second spliceFull with unchanged inputs must not rewrite the artifact.
+> checkSize
+$ exists target/splice/full.js
