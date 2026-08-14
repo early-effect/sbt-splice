@@ -1,0 +1,4 @@
+# Plugin loads on a Scala.js project. Tasks depend on the linker, then fail until Phase 1.
+> plugins
+-> spliceFast
+-> spliceFull

@@ -4,7 +4,12 @@ sbt 2 / Scala 3 plugin: take Scala.js linker output, resolve bare module specifi
 
 Coordinate: `rocks.earlyeffect` % `sbt-splice`
 
-The plugin is not published yet. Design and phases: [ROADMAP.md](ROADMAP.md).
+```scala
+// project/plugins.sbt
+addSbtPlugin("rocks.earlyeffect" % "sbt-splice" % "<version>")
+```
+
+The plugin is not released yet. Design and phases: [ROADMAP.md](ROADMAP.md).
 
 ## License
 
