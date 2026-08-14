@@ -44,6 +44,15 @@ object JsModulesSpec extends ZIOSpecDefault:
           !out.contains("export "),
         )
       },
+      test("rewrites inline export lists used by published ESM bundles") {
+        val body = "function _(n){return n}function x(){}export{x as Component,_ as h};"
+        val out  = JsModules.rewriteExports(body)
+        assertTrue(
+          out.contains("exports.Component = x;"),
+          out.contains("exports.h = _;"),
+          !JsModules.leftoverExports(out),
+        )
+      },
       test("dropExports removes ES module export lines") {
         val js =
           """const x = 1;

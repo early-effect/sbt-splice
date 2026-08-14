@@ -82,7 +82,7 @@ object Splice:
                 modules   = input.libs.keys.map(s => s -> JsModules.ident(s)).toMap ++ relMap.toMap ++ ids.toMap
                 rewritten = JsModules.rewriteExports(JsModules.rewrite(raw, modules))
                 _ <- ZIO.when(
-                  rewritten.contains("export ") ||
+                  JsModules.leftoverExports(rewritten) ||
                     rewritten.linesIterator.exists(l => l.trim.startsWith("import "))
                 )(ZIO.fail(SpliceError.Io(s"could not wrap exports/imports in ${path.getFileName}")))
               yield

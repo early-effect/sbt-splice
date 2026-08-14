@@ -1,0 +1,4 @@
+# @JSImport("preact") against the published module: spliceFast and spliceFull run on GraalJS.
+> checkRuns
+$ exists target/splice/fast.js
+$ exists target/splice/full.js

@@ -3,6 +3,7 @@ val zioVersion      = "2.1.26"
 val specularVersion = "0.12.1"
 val scalaJsVersion  = "1.22.0"
 val chekhovVersion  = "0.0.3"
+val graalVersion    = "25.2.4"
 
 scalaVersion         := scala3Version
 organization         := "rocks.earlyeffect"
@@ -68,6 +69,10 @@ lazy val root = project
         .exclude("org.scala-lang.modules", "scala-collection-compat_2.13"),
       // Same artifact Scala.js 1.22's scalajs-linker pins.
       "com.google.javascript" % "closure-compiler" % "v20220202",
+      // Test-only: prove spliced output runs on a JVM JS engine. Not published.
+      "org.graalvm.polyglot" % "polyglot"        % graalVersion % Test,
+      "org.graalvm.js"       % "js-language"     % graalVersion % Test,
+      "org.graalvm.truffle"  % "truffle-runtime" % graalVersion % Test,
     ),
     testFrameworks += new TestFramework("zio.test.sbt.ZTestFramework"),
     scriptedLaunchOpts ++= Seq("-Xmx512m", s"-Dplugin.version=${version.value}"),

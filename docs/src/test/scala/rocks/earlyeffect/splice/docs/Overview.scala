@@ -33,10 +33,10 @@ Neither task reimplements the Scala.js linker.
     ),
     section("Status")(
       md"""
-Phase 3 maps specifiers, then `spliceFull` runs Closure advanced on the combined
-file (same `closure-compiler` artifact Scala.js 1.22 pins: `v20220202`). See
-[ROADMAP.md](https://github.com/early-effect/sbt-splice/blob/main/ROADMAP.md)
-for a real-library run (Phase 4).
+Phase 4 maps specifiers and **runs** the spliced file: `spliceFast` and
+`spliceFull` of a real `@JSImport("preact")` execute on GraalJS (JVM, no Node).
+See [ROADMAP.md](https://github.com/early-effect/sbt-splice/blob/main/ROADMAP.md)
+for first-consumer adoption.
 """
     ),
   )
