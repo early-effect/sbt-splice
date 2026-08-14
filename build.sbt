@@ -52,6 +52,7 @@ zipxEnv := Map(
 lazy val root = project
   .in(file("."))
   .enablePlugins(SbtPlugin)
+  .disablePlugins(chekhov.sbt.ChekhovPlugin)
   .aggregate(docs)
   .settings(
     name        := "sbt-splice",
@@ -74,6 +75,7 @@ lazy val root = project
 lazy val docs = project
   .in(file("docs"))
   .enablePlugins(SpecularPlugin)
+  .disablePlugins(chekhov.sbt.ChekhovPlugin)
   .settings(
     name           := "sbt-splice-docs",
     publish / skip := true,
@@ -116,12 +118,27 @@ lazy val e2e = project
     ),
     testFrameworks += new TestFramework("zio.test.sbt.ZTestFramework"),
     chekhovBrowser := "firefox",
+    // sbt-chekhov 0.0.3 installs every engine; this suite only smokes Firefox.
+    chekhovInstall := Def.uncached {
+      val log     = streams.value.log
+      val name    = chekhovBrowser.value
+      val browser = chekhov.ChekhovBrowser.fromString(name).getOrElse(
+        sys.error(s"chekhov: unknown browser '$name'")
+      )
+      chekhov.protocol.PinnedPlaywright.install(
+        browsers = List(browser),
+        log = msg => log.info(msg),
+      ) match
+        case Left(err)  => sys.error(err)
+        case Right(cli) =>
+          log.info(s"Pinned Playwright ${chekhov.protocol.PinnedPlaywright.version} CLI: $cli")
+    },
   )
 
 zipxCapabilities += Capability
   .once(
     name = Capability.TestName,
-    command = zipxTasks.session(chekhovInstall, testFull, e2e / testFull, scripted),
+    command = zipxTasks.session(e2e / chekhovInstall, testFull, e2e / testFull, scripted),
     needsCapabilities = List(Fmt),
   )
   .withNodeVersion(NodeVersion("24"))

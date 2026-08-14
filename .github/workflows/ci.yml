@@ -90,9 +90,9 @@ jobs:
       - name: test
         run: |
           if [ "$ZIPX_VERIFY_CLEAN_FULL" = "true" ]; then
-            sbt 'cleanFull; chekhovInstall; testFull; e2e/testFull; scripted'
+            sbt 'cleanFull; e2e/chekhovInstall; testFull; e2e/testFull; scripted'
           else
-            sbt 'chekhovInstall; testFull; e2e/testFull; scripted'
+            sbt 'e2e/chekhovInstall; testFull; e2e/testFull; scripted'
           fi
         env:
           ZIPX_VERIFY_CLEAN_FULL: ${{ github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'clean') }}

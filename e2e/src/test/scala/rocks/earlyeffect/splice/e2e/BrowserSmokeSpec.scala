@@ -9,7 +9,7 @@ import zio.test.*
 
 import java.nio.file.Path
 
-/** Firefox smoke against spliced escape-string-regexp. Not aggregated: run `sbt chekhovInstall` then `e2e/testFull`. */
+/** Firefox smoke against spliced escape-string-regexp. Not aggregated: run `sbt e2e/chekhovInstall` then `e2e/testFull`. */
 object BrowserSmokeSpec extends ChekhovSuite:
 
   override def chekhovConfig: ChekhovConfig =

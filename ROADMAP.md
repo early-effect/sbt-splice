@@ -246,7 +246,7 @@ Checkable:
 - [x] Output path is configurable
 - [x] Scripted: `@JSImport("foo")` plus a tiny vendored `foo.js`; output contains no leftover bare specifier for `foo`
 - [x] Scripted: missing mapping fails
-- [x] Scripted still has no Node on `PATH`. The plugin never spawns Node. CI Verify runs Chekhov Firefox via `chekhovInstall` (Node 24; browsers under `target/ms-playwright`)
+- [x] Scripted still has no Node on `PATH`. The plugin never spawns Node. CI Verify runs Chekhov Firefox via `e2e/chekhovInstall` (Node 24; browsers under `target/ms-playwright`)
 
 ### Phase 2: resolvers + Coursier cache (Maven / WebJar / CDN)
 
