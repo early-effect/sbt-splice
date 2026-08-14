@@ -1,0 +1,3 @@
+# WebJar-style test jar: spliceFast leaves no bare foo specifier.
+> checkSpliced
+$ exists target/splice/fast.js

@@ -30,18 +30,26 @@ scalaJSLinkerConfig ~= { _.withModuleKind(ModuleKind.ESModule) }
     ),
     section("Tasks")(
       md"""
-- `spliceFast` — depends on `Compile / fastLinkJS`, then splices mapped files into
+- `spliceFast` depends on `Compile / fastLinkJS`, then splices mapped files into
   `spliceFastOutput` (default `target/splice/fast.js`).
-- `spliceFull` — depends on `Compile / fullLinkJS` and splices the same way.
+- `spliceFull` depends on `Compile / fullLinkJS` and splices the same way.
   Closure on the combined file is Phase 3.
 
-Map bare specifiers to vendored files:
+Map bare specifiers to vendored files, WebJars, or pinned CDN coordinates:
 
 ```scala
+spliceResolvers += Splice.jsDelivr
+
 spliceLibs += Splice.file("foo", baseDirectory.value / "vendor" / "foo.js")
+spliceLibs += Splice.webjar("htm", "3.1.4", "dist/htm.module.js")
+spliceLibs += Splice.lib("preact", "10.26.4", "dist/preact.module.js")
+                 .sha256("…")
 ```
 
-Unresolved specifiers fail the task and name the specifier and the referring file.
+CDN coordinates require `sha256`. Maven/WebJar uses the project's `resolvers`
+(a dedicated `splice` configuration, not the Compile classpath). Add
+`Splice.jsDelivr` or `Splice.unpkg` to opt into CDNs. Unresolved specifiers fail
+the task and name the specifier and the referring file.
 """
     ),
   )

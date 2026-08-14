@@ -17,7 +17,7 @@ GitHub: `early-effect/sbt-splice`. Local: `~/projects/fun/sbt-splice`. Coordinat
 |---|---|---|
 | 0 | sbt 2 plugin skeleton, publish identity, empty task | done |
 | 1 | File-mapped specifiers after `fastLinkJS`; unresolved import fails | done |
-| 2 | Resolvers + Coursier cache: Maven/WebJar, jsDelivr, unpkg | not started |
+| 2 | Resolvers + Coursier cache: Maven/WebJar, jsDelivr, unpkg | done |
 | 3 | Full optimize via Scala.js minify + post-link Closure; size budget | not started |
 | 4 | Scripted `@JSImport` of a vendored library runs without Node | not started |
 
@@ -96,7 +96,7 @@ spliceResolvers += Splice.unpkg
 spliceLibs += Splice.lib("foo", "1.2.3", "dist/foo.module.js")
                  .sha256("…")              // required for CDN; Maven uses repo checksums
 spliceLibs += Splice.webjar("foo", "1.2.3", "dist/foo.module.js")
-spliceLibs += Splice.file(baseDirectory.value / "vendor/foo.module.js")
+spliceLibs += Splice.file("foo", baseDirectory.value / "vendor/foo.module.js")
 ```
 
 The string `"foo"` is the bare specifier `@JSImport` uses. Version + path pick the file. The same shape is `"preact"` / `"htm"` / `"lit"` / anything else. Resolver list is search order, like Ivy: first hit that verifies wins. A project that must not talk to CDNs omits `Splice.jsDelivr` / `Splice.unpkg` and keeps WebJars + vendor files.
@@ -252,13 +252,13 @@ Checkable:
 
 Checkable:
 
-- [ ] `spliceResolvers` is configurable like `resolvers`. Built-ins: WebJars/Maven (project `resolvers`), jsDelivr, unpkg. User can add, remove, reorder. No esm.sh by default.
-- [ ] `spliceLibs` maps a bare specifier to a coordinate: vendor `File`, or `{name, version, path}` plus optional `sha256`. WebJar form uses `ModuleID`.
-- [ ] Maven/WebJar: `update` in a dedicated `Splice` configuration via Coursier. Jar is not on the Compile classpath. Extract the named `.js`. Fail if the jar has no matching path.
-- [ ] CDN: expand through the resolver to an HTTPS URL, download with `coursier.cache.FileCache` into `csrCacheDirectory`, verify sha256. Missing pin or mismatch fails.
-- [ ] Cache hit does not re-fetch. Offline / `CachePolicy.LocalOnly` succeeds when Coursier already has the file (or a vendor path is used).
-- [ ] Scripted: WebJar-style test jar; jsDelivr-shaped `httptest` with correct hash; wrong hash fails; resolver omitted → not found.
-- [ ] No npm, no `package.json`, no process spawn. No second cache directory of our own.
+- [x] `spliceResolvers` is configurable like `resolvers`. Built-ins: WebJars/Maven (project `resolvers`), jsDelivr, unpkg. User can add, remove, reorder. No esm.sh by default.
+- [x] `spliceLibs` maps a bare specifier to a coordinate: vendor `File`, or `{name, version, path}` plus optional `sha256`. WebJar form uses `ModuleID`.
+- [x] Maven/WebJar: `update` in a dedicated `Splice` configuration via Coursier. Jar is not on the Compile classpath. Extract the named `.js`. Fail if the jar has no matching path.
+- [x] CDN: expand through the resolver to an HTTPS URL, download with `coursier.cache.FileCache` into `csrCacheDirectory`, verify sha256. Missing pin or mismatch fails.
+- [x] Cache hit does not re-fetch. Offline / `CachePolicy.LocalOnly` succeeds when Coursier already has the file (or a vendor path is used).
+- [x] Scripted: WebJar-style test jar; jsDelivr-shaped `httptest` with correct hash; wrong hash fails; resolver omitted → not found.
+- [x] No npm, no `package.json`, no process spawn. No second cache directory of our own.
 
 Vendor files from Phase 1 stay the zero-network path. Remotes are opt-in via resolvers.
 

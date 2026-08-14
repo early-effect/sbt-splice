@@ -33,10 +33,10 @@ Neither task reimplements the Scala.js linker.
     ),
     section("Status")(
       md"""
-Phase 1 maps bare specifiers to files on disk after `fastLinkJS`. Maven/WebJar/CDN
-resolvers are Phase 2. See
+Phase 2 maps specifiers to vendor files, WebJars, or pinned CDN fetches through
+Coursier. See
 [ROADMAP.md](https://github.com/early-effect/sbt-splice/blob/main/ROADMAP.md)
-for the rest of the plan.
+for Closure (Phase 3) and a real-library run (Phase 4).
 """
     ),
   )
