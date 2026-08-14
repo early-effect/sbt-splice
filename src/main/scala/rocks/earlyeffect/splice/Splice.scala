@@ -48,16 +48,21 @@ object Splice:
       _      <- checkLibFiles(input.libs)
       packed <- pack(input)
       spliced = packed.concat
-      _    <- leftover(spliced, input.libs.keys, input.output)
-      body <-
+      _        <- leftover(spliced, input.libs.keys, input.output)
+      compiled <-
         if input.optimize then
           Closure.optimize(
             inputs = packed.bundled,
             prefix = packed.prefix,
             extraExterns = packed.externNames,
+            sourceMaps = input.sourceMaps,
+            sourceMapFile = input.output.getFileName.toString,
           )
-        else ZIO.succeed(spliced)
-      _ <- write(input.output, body)
+        else ZIO.succeed(Closure.Compiled(spliced, fastMap(packed, input)))
+      _ <- write(input.output, finishJs(compiled.js, compiled.sourceMap, input))
+      _ <- compiled.sourceMap match
+        case Some(m) => write(SourceMaps.mapPath(input.output), m)
+        case None    => ZIO.unit
     yield input.output
 
   private final case class Packed(
@@ -65,7 +70,9 @@ object Splice:
       prefix: List[(String, String)],
       externNames: List[String],
   ):
-    def concat: String = (prefix ++ bundled).map(_._2).mkString
+    def concat: String       = (prefix ++ bundled).map(_._2).mkString
+    def beforeLinker: String =
+      (prefix ++ bundled.filterNot(_._1 == "linker.js")).map(_._2).mkString
 
   private def pack(input: SpliceInput): IO[SpliceError, Packed] =
     ZIO.suspendSucceed {
@@ -144,6 +151,18 @@ object Splice:
   private def checkLibFiles(libs: Map[String, Path]): IO[SpliceError, Unit] =
     ZIO.foreachDiscard(libs.toList): (spec, path) =>
       ZIO.unless(Files.isRegularFile(path))(ZIO.fail(SpliceError.MissingFile(spec, path.toString))).unit
+
+  private def finishJs(js: String, map: Option[String], input: SpliceInput): String =
+    if map.isDefined then SourceMaps.annotate(js, SourceMaps.mapFileName(input.output))
+    else js
+
+  private def fastMap(packed: Packed, input: SpliceInput): Option[String] =
+    if !input.sourceMaps then None
+    else
+      val dest     = SourceMaps.mapPath(input.output)
+      val sections = SourceMaps.sectionsFor(packed.beforeLinker, input.linker, dest)
+      if sections.isEmpty then None
+      else Some(SourceMaps.indexed(input.output.getFileName.toString, sections))
 
   private def leftover(body: String, mapped: Iterable[String], output: Path): IO[SpliceError, Unit] =
     JsModules.leftoverBare(body, mapped) match

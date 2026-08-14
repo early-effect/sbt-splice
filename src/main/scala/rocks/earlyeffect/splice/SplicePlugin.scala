@@ -32,6 +32,9 @@ object SplicePlugin extends AutoPlugin:
     val spliceFull = taskKey[File](
       "Private-link remapped IR, splice pinned JS, then Closure-advanced (production)."
     )
+    val spliceSourceMaps = settingKey[Boolean](
+      "Write a source map next to the spliced JS. Default true on spliceFast, false on spliceFull."
+    )
     export rocks.earlyeffect.splice.{Splice, SpliceLib, SpliceResolver}
     export rocks.earlyeffect.splice.SpliceLib.sha256
 
@@ -64,9 +67,11 @@ object SplicePlugin extends AutoPlugin:
     },
     // sbt 2 `target` is `target/out/jvm/scala-…/<id>/`. Keep splice output at the
     // project-root path docs advertise (`target/splice/fast.js`).
-    spliceFastOutput := Def.uncached(baseDirectory.value / "target" / "splice" / "fast.js"),
-    spliceFullOutput := Def.uncached(baseDirectory.value / "target" / "splice" / "full.js"),
-    spliceFast       := Def.uncached(
+    spliceFastOutput              := Def.uncached(baseDirectory.value / "target" / "splice" / "fast.js"),
+    spliceFullOutput              := Def.uncached(baseDirectory.value / "target" / "splice" / "full.js"),
+    spliceFast / spliceSourceMaps := true,
+    spliceFull / spliceSourceMaps := false,
+    spliceFast                    := Def.uncached(
       spliceTask(
         stage = fastLinkJS,
         linkDirName = "fast-link",
@@ -106,6 +111,7 @@ object SplicePlugin extends AutoPlugin:
       val localOnly  = offline.value
       val extractDir = (baseDirectory.value / "target" / "splice" / "extracted").toPath
       val linkDir    = baseDirectory.value / "target" / "splice" / linkDirName
+      val mapsOn     = ((if optimize then spliceFull else spliceFast) / spliceSourceMaps).value
       val stamp      =
         if optimize then Some(streams.value.cacheDirectory / "splice-full-digest") else None
       Def
@@ -123,6 +129,7 @@ object SplicePlugin extends AutoPlugin:
               extractDir = extractDir,
               optimize = optimize,
               cacheStamp = stamp,
+              sourceMaps = mapsOn,
             )
           }
         }
@@ -161,12 +168,18 @@ object SplicePlugin extends AutoPlugin:
       extractDir: Path,
       optimize: Boolean,
       cacheStamp: Option[File],
+      sourceMaps: Boolean,
   ): File =
+    val files = Option(dir.listFiles).toList.flatten.filter(_.isFile)
+    val maps  = files
+      .filter(_.getName.endsWith(".js.map"))
+      .map(f => f.getName.stripSuffix(".map") -> f.toPath)
+      .toMap
     val linker =
-      Option(dir.listFiles).toList.flatten
-        .filter(f => f.isFile && f.getName.endsWith(".js") && !f.getName.endsWith(".map"))
+      files
+        .filter(f => f.getName.endsWith(".js") && !f.getName.endsWith(".map"))
         .sortBy(_.getName)
-        .map(f => LinkerFile(f.getName, IO.read(f)))
+        .map(f => LinkerFile(f.getName, IO.read(f), maps.get(f.getName)))
     val env = ResolveEnv(
       resolvers = resolvers,
       cacheDir = cacheDir,
@@ -177,9 +190,10 @@ object SplicePlugin extends AutoPlugin:
     val libMap = RunSplice(Splice.resolve(libs, env))
     val extern = libs.collect { case l if l.isExtern => l.specifier }.toSet
     val digest =
-      if optimize then Some(Closure.programDigest(linker, libMap, out.toPath, extern))
+      if optimize then Some(Closure.programDigest(linker, libMap, out.toPath, extern, sourceMaps))
       else None
-    val hit = digest.exists(d => cacheStamp.exists(s => Closure.cacheHit(s.toPath, d, out.toPath)))
+    val mapOut = if sourceMaps then Some(SourceMaps.mapPath(out.toPath)) else None
+    val hit    = digest.exists(d => cacheStamp.exists(s => Closure.cacheHit(s.toPath, d, out.toPath, mapOut)))
     if !hit then
       RunSplice(
         Splice.run(
@@ -189,6 +203,7 @@ object SplicePlugin extends AutoPlugin:
             output = out.toPath,
             optimize = optimize,
             extern = extern,
+            sourceMaps = sourceMaps,
           )
         )
       )

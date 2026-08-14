@@ -64,6 +64,35 @@ object SpliceSpec extends ZIOSpecDefault:
           !body.contains("""require("foo")"""),
         )
       },
+      test("source map section offset equals prepended wrapper line count including blanks") {
+        for
+          dir <- tempDir
+          foo = dir.resolve("foo.js")
+          _ <- write(foo, "export function greet() { return \"ok\"; }\n")
+          linkerMap = dir.resolve("main.js.map")
+          _ <- write(linkerMap, """{"version":3,"file":"main.js","sources":["Hello.scala"],"mappings":"AAAA"}""")
+          out    = dir.resolve("splice.js")
+          marker = "const Foo = __splice_foo;\n"
+          _ <- Splice.run(
+            SpliceInput(
+              linker = List(LinkerFile("main.js", marker, Some(linkerMap))),
+              libs = Map("foo" -> foo),
+              output = out,
+              sourceMaps = true,
+            )
+          )
+          body <- ZIO.attempt(Files.readString(out))
+          map  <- ZIO.attempt(Files.readString(SourceMaps.mapPath(out)))
+          idx    = body.indexOf(marker)
+          prefix = body.substring(0, idx)
+          offset = SourceMaps.lineOffset(prefix)
+        yield assertTrue(
+          idx > 0,
+          offset > 0,
+          map.contains(s""""line":$offset"""),
+          body.contains("sourceMappingURL=splice.js.map"),
+        )
+      },
       test("splices two mapped specifiers into one file") {
         for
           dir <- tempDir

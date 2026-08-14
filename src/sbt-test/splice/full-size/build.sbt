@@ -26,6 +26,10 @@ checkSize := {
   if (got >= concat) {
     sys.error("size budget: spliceFull=" + got + " not smaller than concat=" + concat)
   }
+  val map = new File(fullOut.getPath + ".map")
+  if (map.exists) {
+    sys.error("spliceFull wrote a source map by default: " + map)
+  }
   val t1 = fullOut.lastModified
   Thread.sleep(1000)
   val _ = spliceFull.value

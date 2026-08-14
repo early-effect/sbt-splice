@@ -33,8 +33,13 @@ scalaJSLinkerConfig ~= { _.withModuleKind(ModuleKind.ESModule) }
 - `spliceFast` private-links `@JSImport` specifiers in `spliceLibs` to
   `globalThis.__splice_*`, then splices mapped files into `spliceFastOutput`
   (default `target/splice/fast.js`). Vanilla `fastLinkJS` is not rewritten.
+  Source maps are on by default (`spliceFast / spliceSourceMaps`); the map is
+  indexed, with a line offset equal to the prepended wrapper line count
+  (including blanks).
 - `spliceFull` does the same with the full-opt linker, then runs Closure
   advanced. The default artifact is one script (`target/splice/full.js`).
+  Source maps are off by default; set `spliceFull / spliceSourceMaps := true`
+  to ask Closure for a map.
 
 Map bare specifiers to vendored files, WebJars, or pinned CDN coordinates:
 

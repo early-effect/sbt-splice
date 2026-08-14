@@ -17,4 +17,12 @@ checkSpliced := {
     sys.error(s"leftover foo specifier in $f")
   if (!t.contains("__splice_foo"))
     sys.error(s"expected wrapped foo module in $f")
+  if (!t.contains("sourceMappingURL=app.js.map"))
+    sys.error(s"expected sourceMappingURL in $f")
+  val map = new File(f.getPath + ".map")
+  if (!map.exists)
+    sys.error(s"expected source map $map")
+  val m = IO.read(map)
+  if (!m.contains("\"sections\"") || !m.contains("fast-link"))
+    sys.error(s"expected indexed map pointing at private-link output in $map")
 }

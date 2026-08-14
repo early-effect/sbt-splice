@@ -32,7 +32,7 @@ an ascent example) still follow publish. See §6.
 | rename | Plugin lives in `rocks.earlyeffect.splice` (no `sbt` package segment) | done |
 | modules | ESM / CJS / UMD / global wrap; `.extern` Closure hatch | done |
 | ir | Private link; `@JSImport` → Global in IR; no linker-JS regex rewrite | done |
-| maps | Configurable source maps (fast on, full off by default) | not started |
+| maps | Configurable source maps (fast on, full off by default) | done |
 | github | Tag tarball resolver, sha256 pin | not started |
 
 ## Stack and style
@@ -313,10 +313,10 @@ published). `pomOnly()` on `org.graalvm.polyglot:js` does not pull `js-language`
 ## 6. Next: pre-release, then publish, then adopt
 
 The phase-0–4 internals work. Remaining **in this repo** is the pre-release
-table at the top (source maps and GitHub tarballs). Central publish waits until
+table at the top (GitHub tarballs). Central publish waits until
 that table is done. Consumers adopt from Central after that.
 
-1. **Finish the pre-release waves** (rename, modules, and IR are done; maps and GitHub remain).
+1. **Finish the pre-release waves** (rename, modules, IR, and maps are done; GitHub remains).
 2. **First Central publish** of `rocks.earlyeffect` % `sbt-splice`. Until that
    exists, consumers cannot depend on it.
 3. **preactile docs client.** `docs / specularJsLink` stops calling `npm install`
@@ -362,12 +362,13 @@ sbt-splice on its own after publish.
   Unmapped specifiers still fail leftover/unresolved checks. `scalajs-ir` and
   `scalajs-linker-interface` are explicit plugin dependencies (sbt-scalajs does
   not always export those types to Scala 3 sources).
+- **Source maps.** `spliceFast / spliceSourceMaps` defaults on; full defaults
+  off. Fast writes an indexed map whose first Scala.js section offset is the
+  exact prepended wrapper line count, including blanks. Full, when enabled,
+  asks Closure for a map. No vendor `.map` fetch.
 
 ### Still open
 
-- **Source maps.** Fast should stitch the private-link map through prepended
-  wrappers. Offset is the exact prepended line count, including blanks. Full
-  off by default (explicit in Usage).
 - **Split modules on fast.** Default is one file. `js.dynamicImport` /
   `ModuleSplitStyle` may want a tiny set; full stays one file until someone has
   a measured load-time or cache-busting reason.
