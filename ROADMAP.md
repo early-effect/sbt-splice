@@ -23,6 +23,10 @@ GitHub: `early-effect/sbt-splice`. Local: `~/projects/fun/sbt-splice`. Coordinat
 
 This file is forward-looking. Git history records what shipped.
 
+**Internals are done.** There is no Phase 5 of splice itself. Next work is
+outside this repo: first Central publish, then preactile, then an ascent
+example. See §6.
+
 ## Stack and style
 
 **sbt 2 only. Scala 3 only.** No sbt 1 artifact, no Scala 2. The published plugin is `_sbt2_3`. `project/build.properties` is sbt 2.x; `scalaVersion` is Scala 3.8. Do not keep a 1.x code path "for compatibility."
@@ -288,31 +292,81 @@ Checkable:
 
 Static "no bare import" assertions from Phase 1 stay. Phase 4 adds a run.
 
-## 6. Acceptance
+GraalJS is this repo's run proof (unit + scripted). It is **not** a plugin feature.
+Keep it off the published classpath (`% Test` here; the scripted meta-build is not
+published). `pomOnly()` on `org.graalvm.polyglot:js` does not pull `js-language`.
 
-The plugin is done when **any** Scala.js project can declare specifier → pinned JS, run `spliceFast` / `spliceFull`, and load the result in a browser with no npm in the loop. Neither of the first consumers is implemented in this repo; they adopt a published artifact.
+## 6. Next: publish, then adopt
 
-First consumers (prove the general path, do not define the product):
+The plugin internals are done. Remaining work is a published artifact and
+consumers, not more splice phases. Neither first consumer is implemented in this
+repo; they adopt from Central.
 
-1. **preactile docs client.** `docs / specularJsLink` stops calling `npm install` and `npm run build`. It runs `docsClient / spliceFast` (dev) / `spliceFull` (publish) and copies the file to `target/site/assets/client.js`. Docs that currently say "npm install preact" and "Vite setup" get rewritten to a specifier map. Chekhov E2E against the served site still passes (that is preactile's browser check, not splice's).
-2. **An ascent example with no npm imports** (e.g. `todo-conduit`). Today Vite is only a file server. The example serves splice output as a static file (existing JVM server, Specular `DocsServe`, or ascent preview). No `npm run dev`, no `@scala-js/vite-plugin-scalajs` for that example.
+1. **First Central publish** of `rocks.earlyeffect` % `sbt-splice`. Until that
+   exists, consumers cannot depend on it.
+2. **preactile docs client.** `docs / specularJsLink` stops calling `npm install`
+   and `npm run build`. It runs `docsClient / spliceFast` (dev) / `spliceFull`
+   (publish) and copies the file to `target/site/assets/client.js`. Docs that
+   currently say "npm install preact" and "Vite setup" get rewritten to a
+   specifier map. Chekhov E2E against the served site still passes (that is
+   preactile's browser check, not splice's).
+3. **An ascent example with no npm imports** (e.g. `todo-conduit`). Today Vite is
+   only a file server. The example serves splice output as a static file (existing
+   JVM server, Specular `DocsServe`, or ascent preview). No `npm run dev`, no
+   `@scala-js/vite-plugin-scalajs` for that example.
 
-Specular #55 is the adopt ticket on the docs-site side. Preactile adopts sbt-splice on its own after publish.
+Specular #55 is the adopt ticket on the docs-site side. Preactile adopts
+sbt-splice on its own after publish.
 
-## 7. Open questions
+## 7. Decisions and leftovers
 
-- **Module kind default.** Fast: follow the project (`ESModule` for `@JSImport`). Full: emit a script after Closure. Confirm whether consumers that use `<script type="module">` (Specular's docs client, others) can load that, or whether full must also emit ESM (and then Closure-on-ESM is off the table). Default: leave the linker alone; reshape at splice.
-- **One file vs split.** Default one file. `js.dynamicImport` / `ModuleSplitStyle` may want a tiny set on fast. Full stays one file until someone has a measured load-time or cache-busting reason.
-- **Source maps.** Fast should preserve or stitch the linker map through rewrite/inline. Full + Closure maps are harder. **`spliceFull` drops maps** in Phase 3; that is explicit in Usage.
-- **Closure version.** Pin Scala.js's JAR for maximum familiarity, or a newer GCC now that we are on JDK 25? Default: start on the artifact Scala.js uses; bump only with a size/correctness note. If the linker drops GCC entirely, keep using the compiler JAR as a plugin dependency. Do not switch to a Node minifier to "follow Scala.js". **Pinned `v20220202`**, matching Scala.js 1.22's `scalajs-linker`.
-- **CJS vs ESM vendor files.** Libraries ship both. Prefer ESM for fast-as-modules; for full, either is fine once inlined. Nested specifiers (`foo/plugin`) need their own map entries (each its own pin). Do not invent an npm `"exports"` walk.
-- **Resolver search vs explicit source.** Ivy searches `resolvers` in order. Doing that for jsDelivr then unpkg could yield different bytes for the same coordinate. Default: Maven/WebJar if the user asked for a WebJar; otherwise the first *enabled* CDN resolver. Allow pinning a lib to one resolver. Do not silently fall across CDNs.
-- **FileCache vs `update`.** WebJars fit `update` in a `Splice` config. CDN files may be easier as `FileCache.file(url + checksum)` than as fake `ModuleID`s. One cache (`csrCacheDirectory`) either way. Confirm the lm-coursier API on sbt 2 before picking; do not use `ModuleID.from` as the advertised API.
-- **GitHub release tarballs.** Nice extra resolver. Not required for Phase 2 if jsDelivr/unpkg + WebJars cover typical packages.
-- **URL allowlist / corporate mirror.** `spliceResolvers` is the allowlist. A company can add an internal Maven repo of WebJars and drop public CDNs.
-- **IR remap vs post-link rewrite.** scalajs-importmap rewrites `@JSImport` in IR to URLs. Default: post-link on emitted JS. IR remap is an optimization later if rewrite is fragile.
-- **Linker Closure on as well?** Only if a measured win remains after the post-link pass. Not the default.
-- **Escape hatch for un-Closure-able libraries.** `extern` mapping vs fail. Prefer fail until a real library needs it.
+### Decided (do not reopen)
+
+- **Fetch path.** WebJar: `update` in a hidden `Splice` config. CDN: Coursier
+  `FileCache` into `csrCacheDirectory`. Not `ModuleID.from`.
+- **CDN search.** A 404 may try the next enabled CDN. A hash mismatch fails
+  immediately; do not fall across CDNs on a bad pin.
+- **Module shape.** `spliceFull` is one classic script. `spliceFast` may still
+  look like ESM. Whether a production `<script type="module">` can load full is a
+  preactile question, not a new splice phase.
+- **Published ESM.** Real packages often put `export{x as h, ...}` on the same
+  line as the bundle. `JsModules.rewriteExports` must handle that; leftover
+  detection uses `leftoverExports`.
+- **Closure.** JAR is `v20220202`, matching Scala.js 1.22. Extra linker Closure
+  is not the default. Fail the task on Closure errors.
+- **Allowlist.** `spliceResolvers` is the URL allowlist. A company adds an
+  internal Maven repo of WebJars and drops public CDNs.
+
+### Still open
+
+- **Source maps.** Fast should stitch the linker map through rewrite. Full drops
+  maps today (explicit in Usage).
+- **Split modules on fast.** Default is one file. `js.dynamicImport` /
+  `ModuleSplitStyle` may want a tiny set; full stays one file until someone has
+  a measured load-time or cache-busting reason.
+- **GitHub release tarballs.** Extra resolver. jsDelivr / unpkg / WebJars cover
+  typical packages.
+- **`extern` hatch** for a library advanced mode will miscompile. Prefer fail
+  until a real library needs it.
+- **IR remap** if post-link rewrite proves fragile. Default stays post-link on
+  emitted JS.
+
+## 8. Sharp edges (this plugin)
+
+Product-local rakes. Cross-plugin sbt 2 rakes live in the global `sbt-2-plugin`
+rule.
+
+- Package `rocks.earlyeffect.splice.sbt` shadows `_root_.sbt`. Import
+  `_root_.sbt.*` / `_root_.sbt.Keys.*`. Never `import sbt.Keys`.
+- sbt 2 `config("splice")` macro: the **val** must be capitalized
+  (`val SpliceJs = config("splice").hide`).
+- sbt 2 `target.value` is `target/out/jvm/…/<id>/`. Advertised output stays at
+  `baseDirectory / "target" / "splice" / …`.
+- Top-level `Unit` in a scripted `build.sbt` is not a `DslEntry`; wrap
+  side-effecting helpers in a setting.
+- Chekhov e2e is Firefox-only with a scoped `chekhovInstall` until
+  [chekhov#24](https://github.com/early-effect/chekhov/issues/24) (aggregated
+  install races apt across browsers).
 
 ## Prior art (none of these is splice)
 
