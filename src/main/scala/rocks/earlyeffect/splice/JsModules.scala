@@ -77,12 +77,33 @@ object JsModules:
     val found = specifiers(js).toSet
     mapped.toList.filter(spec => isBare(spec) && found.contains(spec))
 
+  private val exportList: Regex = """export\s*\{([^}]*)\}\s*;?""".r
+
   def rewriteExports(body: String): String =
-    body
+    val assigned = body
       .replaceAll("""export\s+default\s+""", "exports.default = ")
       .replaceAll("""export\s+function\s+(\w+)""", "exports.$1 = function $1")
       .replaceAll("""export\s+class\s+(\w+)""", "exports.$1 = class $1")
       .replaceAll("""export\s+(?:const|let|var)\s+(\w+)\s*=""", "exports.$1 =")
+    def listOf(m: Regex.Match): String =
+      Matcher.quoteReplacement(
+        m.group(1)
+          .split(",")
+          .toList
+          .map(_.trim)
+          .filter(_.nonEmpty)
+          .map { binding =>
+            val parts = binding.split("\\s+as\\s+")
+            if parts.length == 2 then s"exports.${parts(1).trim} = ${parts(0).trim};"
+            else s"exports.$binding = $binding;"
+          }
+          .mkString(" ")
+      )
+    exportList.replaceAllIn(assigned, listOf)
+  end rewriteExports
+
+  def leftoverExports(js: String): Boolean =
+    js.contains("export ") || js.contains("export{") || js.contains("export*")
 
   /** Drop ES module export lines so Closure can compile a script. */
   def dropExports(js: String): String =

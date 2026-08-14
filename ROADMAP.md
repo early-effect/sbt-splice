@@ -19,7 +19,7 @@ GitHub: `early-effect/sbt-splice`. Local: `~/projects/fun/sbt-splice`. Coordinat
 | 1 | File-mapped specifiers after `fastLinkJS`; unresolved import fails | done |
 | 2 | Resolvers + Coursier cache: Maven/WebJar, jsDelivr, unpkg | done |
 | 3 | Full optimize via Scala.js minify + post-link Closure; size budget | done |
-| 4 | Scripted `@JSImport` of a vendored library runs without Node | not started |
+| 4 | Scripted `@JSImport` of a vendored library runs without Node | done |
 
 This file is forward-looking. Git history records what shipped.
 
@@ -279,12 +279,12 @@ Checkable:
 
 Checkable:
 
-- [ ] Scripted app uses `@JSImport` against a **vendored** file of a real published library (not fetched by npm). A tiny synthetic `"foo"` is not enough here; Phase 1 already covers that. A small ESM library with a callable API is the point (Preact is a convenient fixture because preactile will use it; it is not the only library splice must work with).
-- [ ] `spliceFast` (and `spliceFull` if Phase 3 is in) produce output with no leftover bare specifier
-- [ ] A browser-shaped check **executes** the output against a tiny DOM or equivalent host the library needs
-- [ ] Engine is JVM-hosted. Prefer GraalJS (`org.graalvm.polyglot`) plus a tiny HTML fixture or a minimal `document` shim. HtmlUnit is a fallback. Not Rhino (gone from Scala.js 1.x). Not Node, jsdom, or Playwright.
-- [ ] Scala.js's `scalajs-js-envs-test-kit` is for testing `JSEnv` implementations; the default `JSEnv` is Node, so it is not the Phase 4 runner. Do not add a Node `JSEnv` to make the testkit green.
-- [ ] Scripted CI job does not install Node; `PATH` without `node` still passes
+- [x] Scripted app uses `@JSImport` against a **vendored** file of a real published library (not fetched by npm). A tiny synthetic `"foo"` is not enough here; Phase 1 already covers that. A small ESM library with a callable API is the point (Preact is a convenient fixture because preactile will use it; it is not the only library splice must work with).
+- [x] `spliceFast` (and `spliceFull` if Phase 3 is in) produce output with no leftover bare specifier
+- [x] A browser-shaped check **executes** the output against a tiny DOM or equivalent host the library needs
+- [x] Engine is JVM-hosted. Prefer GraalJS (`org.graalvm.polyglot`) plus a tiny HTML fixture or a minimal `document` shim. HtmlUnit is a fallback. Not Rhino (gone from Scala.js 1.x). Not Node, jsdom, or Playwright.
+- [x] Scala.js's `scalajs-js-envs-test-kit` is for testing `JSEnv` implementations; the default `JSEnv` is Node, so it is not the Phase 4 runner. Do not add a Node `JSEnv` to make the testkit green.
+- [x] Scripted CI job does not install Node; `PATH` without `node` still passes
 
 Static "no bare import" assertions from Phase 1 stay. Phase 4 adds a run.
 
