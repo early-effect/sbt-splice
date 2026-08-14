@@ -1,10 +1,9 @@
-package rocks.earlyeffect.splice.sbt
+package rocks.earlyeffect.splice
 
 import org.scalajs.sbtplugin.ScalaJSPlugin
 import org.scalajs.sbtplugin.ScalaJSPlugin.autoImport.*
-import rocks.earlyeffect.splice.*
-import _root_.sbt.*
-import _root_.sbt.Keys.*
+import sbt.*
+import sbt.Keys.*
 
 import java.nio.file.Path
 

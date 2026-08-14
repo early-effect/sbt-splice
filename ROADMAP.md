@@ -23,9 +23,17 @@ GitHub: `early-effect/sbt-splice`. Local: `~/projects/fun/sbt-splice`. Coordinat
 
 This file is forward-looking. Git history records what shipped.
 
-**Internals are done.** There is no Phase 5 of splice itself. Next work is
-outside this repo: first Central publish, then preactile, then an ascent
-example. See §6.
+**Pre-release hardening is in progress.** Internals of phases 0–4 work; Central
+publish waits until the waves below are done. First consumers (preactile, then
+an ascent example) still follow publish. See §6.
+
+| Wave | What | Status |
+|---|---|---|
+| rename | Plugin lives in `rocks.earlyeffect.splice` (no `sbt` package segment) | done |
+| modules | ESM / CJS / UMD / global wrap; `.extern` Closure hatch | not started |
+| ir | Private link; `@JSImport` → Global in IR; no linker-JS regex rewrite | not started |
+| maps | Configurable source maps (fast on, full off by default) | not started |
+| github | Tag tarball resolver, sha256 pin | not started |
 
 ## Stack and style
 
@@ -296,21 +304,22 @@ GraalJS is this repo's run proof (unit + scripted). It is **not** a plugin featu
 Keep it off the published classpath (`% Test` here; the scripted meta-build is not
 published). `pomOnly()` on `org.graalvm.polyglot:js` does not pull `js-language`.
 
-## 6. Next: publish, then adopt
+## 6. Next: pre-release, then publish, then adopt
 
-The plugin internals are done. Remaining work is a published artifact and
-consumers, not more splice phases. Neither first consumer is implemented in this
-repo; they adopt from Central.
+The phase-0–4 internals work. Remaining **in this repo** is the pre-release
+table at the top (module wrap, IR remap, source maps, GitHub tarballs). Central
+publish waits until that table is done. Consumers adopt from Central after that.
 
-1. **First Central publish** of `rocks.earlyeffect` % `sbt-splice`. Until that
+1. **Finish the pre-release waves** (rename is done; see the table).
+2. **First Central publish** of `rocks.earlyeffect` % `sbt-splice`. Until that
    exists, consumers cannot depend on it.
-2. **preactile docs client.** `docs / specularJsLink` stops calling `npm install`
+3. **preactile docs client.** `docs / specularJsLink` stops calling `npm install`
    and `npm run build`. It runs `docsClient / spliceFast` (dev) / `spliceFull`
    (publish) and copies the file to `target/site/assets/client.js`. Docs that
    currently say "npm install preact" and "Vite setup" get rewritten to a
    specifier map. Chekhov E2E against the served site still passes (that is
    preactile's browser check, not splice's).
-3. **An ascent example with no npm imports** (e.g. `todo-conduit`). Today Vite is
+4. **An ascent example with no npm imports** (e.g. `todo-conduit`). Today Vite is
    only a file server. The example serves splice output as a static file (existing
    JVM server, Specular `DocsServe`, or ascent preview). No `npm run dev`, no
    `@scala-js/vite-plugin-scalajs` for that example.
@@ -356,8 +365,7 @@ sbt-splice on its own after publish.
 Product-local rakes. Cross-plugin sbt 2 rakes live in the global `sbt-2-plugin`
 rule.
 
-- Package `rocks.earlyeffect.splice.sbt` shadows `_root_.sbt`. Import
-  `_root_.sbt.*` / `_root_.sbt.Keys.*`. Never `import sbt.Keys`.
+- Plugin sources live in `rocks.earlyeffect.splice` (no `sbt` package segment).
 - sbt 2 `config("splice")` macro: the **val** must be capitalized
   (`val SpliceJs = config("splice").hide`).
 - sbt 2 `target.value` is `target/out/jvm/…/<id>/`. Advertised output stays at
