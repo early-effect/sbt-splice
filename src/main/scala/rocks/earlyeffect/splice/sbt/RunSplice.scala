@@ -1,7 +1,7 @@
 package rocks.earlyeffect.splice.sbt
 
 import rocks.earlyeffect.splice.SpliceError
-import sbt.MessageOnlyException
+import _root_.sbt.MessageOnlyException
 import zio.*
 
 /** Run a splice `IO` on the sbt thread. Errors become task failures. */

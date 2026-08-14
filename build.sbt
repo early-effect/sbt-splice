@@ -64,6 +64,8 @@ lazy val root = project
       "dev.zio" %% "zio"          % zioVersion,
       "dev.zio" %% "zio-test"     % zioVersion % Test,
       "dev.zio" %% "zio-test-sbt" % zioVersion % Test,
+      ("io.get-coursier" % "coursier-cache_2.13" % "2.1.25-M26")
+        .exclude("org.scala-lang.modules", "scala-collection-compat_2.13"),
     ),
     testFrameworks += new TestFramework("zio.test.sbt.ZTestFramework"),
     scriptedLaunchOpts ++= Seq("-Xmx512m", s"-Dplugin.version=${version.value}"),
@@ -122,16 +124,19 @@ lazy val e2e = project
     chekhovInstall := Def.uncached {
       val log     = streams.value.log
       val name    = chekhovBrowser.value
-      val browser = chekhov.ChekhovBrowser.fromString(name).getOrElse(
-        sys.error(s"chekhov: unknown browser '$name'")
-      )
+      val browser = chekhov.ChekhovBrowser
+        .fromString(name)
+        .getOrElse(
+          sys.error(s"chekhov: unknown browser '$name'")
+        )
       chekhov.protocol.PinnedPlaywright.install(
         browsers = List(browser),
         log = msg => log.info(msg),
-      ) match
+      ) match {
         case Left(err)  => sys.error(err)
         case Right(cli) =>
           log.info(s"Pinned Playwright ${chekhov.protocol.PinnedPlaywright.version} CLI: $cli")
+      }
     },
   )
 

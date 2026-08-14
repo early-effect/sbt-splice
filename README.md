@@ -9,15 +9,20 @@ Coordinate: `rocks.earlyeffect` % `sbt-splice`
 addSbtPlugin("rocks.earlyeffect" % "sbt-splice" % "<version>")
 ```
 
-Map a bare specifier to a vendored file, then run `spliceFast` or `spliceFull`:
+Map a bare specifier to a vendored file, WebJar, or pinned CDN file, then run
+`spliceFast` or `spliceFull`:
 
 ```scala
 enablePlugins(ScalaJSPlugin)
 scalaJSLinkerConfig ~= { _.withModuleKind(ModuleKind.ESModule) }
+spliceResolvers += Splice.jsDelivr
 spliceLibs += Splice.file("foo", baseDirectory.value / "vendor" / "foo.js")
+spliceLibs += Splice.lib("preact", "10.26.4", "dist/preact.module.js").sha256("…")
 ```
 
-Output defaults to `target/splice/fast.js` and `target/splice/full.js`. Unresolved specifiers fail the task. Maven/WebJar/CDN resolvers are Phase 2.
+Output defaults to `target/splice/fast.js` and `target/splice/full.js`. Unresolved
+specifiers fail the task. CDN fetches require sha256; Maven/WebJar uses project
+`resolvers`.
 
 The plugin is not released yet. Design and phases: [ROADMAP.md](ROADMAP.md).
 

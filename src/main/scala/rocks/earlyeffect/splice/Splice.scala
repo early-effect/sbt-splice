@@ -9,8 +9,39 @@ import scala.collection.mutable
 /** Effectful splice core. The sbt AutoPlugin is a thin wrapper around this program. */
 object Splice:
 
-  def file(specifier: String, file: File): SpliceLib =
-    SpliceLib(specifier, file)
+  val maven: SpliceResolver    = SpliceResolver.Maven
+  val jsDelivr: SpliceResolver = SpliceResolver.Cdn(
+    "jsdelivr",
+    (n, v, p) => s"https://cdn.jsdelivr.net/npm/$n@$v/${p.stripPrefix("/")}",
+  )
+  val unpkg: SpliceResolver = SpliceResolver.Cdn(
+    "unpkg",
+    (n, v, p) => s"https://unpkg.com/$n@$v/${p.stripPrefix("/")}",
+  )
+
+  def cdn(id: String)(expand: (String, String, String) => String): SpliceResolver =
+    SpliceResolver.Cdn(id, expand)
+
+  def file(specifier: String, file: File): SpliceLib.File =
+    SpliceLib.File(specifier, file)
+
+  def lib(name: String, version: String, path: String): SpliceLib.Cdn =
+    SpliceLib.Cdn(name, name, version, path, None)
+
+  def webjar(name: String, version: String, path: String): SpliceLib.WebJar =
+    SpliceLib.WebJar(name, "org.webjars.npm", name, version, path)
+
+  def webjar(
+      specifier: String,
+      organization: String,
+      name: String,
+      version: String,
+      path: String,
+  ): SpliceLib.WebJar =
+    SpliceLib.WebJar(specifier, organization, name, version, path)
+
+  def resolve(libs: Seq[SpliceLib], env: ResolveEnv): IO[SpliceError, Map[String, Path]] =
+    Resolve.files(libs, env)
 
   def run(input: SpliceInput): IO[SpliceError, Path] =
     for
