@@ -83,6 +83,8 @@ lazy val root = project
     scriptedBufferLog    := false,
     publishMavenStyle    := true,
     pomIncludeRepository := { _ => false },
+    // Plugin lives on this aggregator. zipx otherwise skips it (docs is aggregated; docs/e2e skip publish).
+    zipxPublish := zipxOn,
   )
 
 lazy val docs = project
