@@ -7,7 +7,9 @@ This is a **general-purpose** Scala.js tool. Any project that uses `@JSImport("s
 First consumers happen to be in this org:
 
 - **preactile** is the demanding one: `@JSImport("preact")` currently forces `npm install` plus a Vite build in `specularJsLink`.
-- **ascent examples** often have no npm imports but still use Vite as a file server; splice should still emit a single (or small) JS file they can serve.
+- **ascent examples** often have no npm imports but still use Vite as a file server.
+  Dev loop is spliceFast plus [ascent#52](https://github.com/early-effect/ascent/issues/52)
+  preview (serve the tree, SSE full reload). Publish is one `spliceFull` script.
 
 GitHub: `early-effect/sbt-splice`. Local: `~/projects/fun/sbt-splice`. Coordinate: `rocks.earlyeffect` % `sbt-splice` (`_sbt2_3`).
 
@@ -150,7 +152,7 @@ Built-in resolvers expand to GET-able URLs. Defaults we should ship because they
 
 **Resolve.** Walk `import` / `export from` (and `require()` if the link was CommonJS). Look up each bare specifier in the map. Recurse into the file's own relative imports (`./plugin.js`). Relative paths inside a vendor file are resolved against that file, not against the map. If a remote fetch's file imports another bare specifier, that specifier needs its own map entry.
 
-**Emit.** Default is one file, so a `<script>` or static asset just works. A tiny set of files (rewritten relative imports, copied vendor files) is allowed for `spliceFast` if inlining is a measurable slowdown. `spliceFull` is one script.
+**Emit.** Default is one file, so a `<script>` or static asset just works. `spliceFast` may later emit a small directory (prelude plus linker chunks) so a preview server can HTTP-cache unchanged modules after a full reload. `spliceFull` is one script.
 
 ## 4. Optimization design
 
@@ -327,13 +329,37 @@ release. Consumers adopt from Central after that.
    currently say "npm install preact" and "Vite setup" get rewritten to a
    specifier map. Chekhov E2E against the served site still passes (that is
    preactile's browser check, not splice's).
-4. **An ascent example with no npm imports** (e.g. `todo-conduit`). Today Vite is
-   only a file server. The example serves splice output as a static file (existing
-   JVM server, Specular `DocsServe`, or ascent preview). No `npm run dev`, no
-   `@scala-js/vite-plugin-scalajs` for that example.
+4. **An ascent example with no npm imports** (e.g. `todo-conduit`). Drop Vite.
+   The loop is below; do not copy the Vite `SmallModulesFor` snippet onto today's
+   one-file `spliceFast`.
+
+### Ascent developer loop (the DX we want)
+
+Splice writes JS. It does not live-reload. [ascent#52](https://github.com/early-effect/ascent/issues/52)
+preview serves the tree and SSE-reloads the tab when a stamp changes
+(`location.reload()`, not Vite HMR). That is the whole "fast on the fly" story
+we are aiming at: no npm, no `import.meta.hot`, a JVM file server plus a
+rebuild stamp.
+
+| Mode | JS | Linker split | Reload |
+|---|---|---|---|
+| **Dev (now)** | `~spliceFast` → one `fast.js` (FewestModules) | default | preview SSE, full reload, re-download the blob |
+| **Dev (later)** | `~spliceFast` → directory: vendor prelude + linker chunks | `SmallModulesFor` on the **app** packages only | same SSE full reload; unchanged chunks can HTTP-cache |
+| **Publish** | `spliceFull` → one Closure script | FewestModules | none |
+
+Do **not** use `SmallestModules`. That style exists so Vite can HMR one class
+file; there is no bundler here, and it would explode stdlib into dozens of
+requests. Do **not** split `spliceFull`. Libraries in `spliceLibs` are pinned
+bytes; they wrap once into the prelude and are not part of the incremental
+loop.
+
+Until directory emit exists, a multi-file private link must **fail the task**.
+Silent concat of `import "./Foo$.js"` is how a copied Vite config ships a
+broken `fast.js`.
 
 Specular #55 is the adopt ticket on the docs-site side. Preactile adopts
-sbt-splice on its own after publish.
+sbt-splice on its own after publish. Ascent preview is the file server;
+splice is not.
 
 ## 7. Decisions and leftovers
 
@@ -372,12 +398,18 @@ sbt-splice on its own after publish.
   plus `spliceResolvers += Splice.github`. sha256 pins the tarball. Extract
   one path after stripping the archive root dir. 404 may retry `v{tag}`; a
   hash mismatch fails immediately and does not search jsDelivr.
+- **Split modules.** `spliceFull` is one file. `spliceFast` is one file until
+  it grows a directory emit (prelude + linker chunks) for preview servers.
+  Then `SmallModulesFor` on app packages is the ascent-dev split; never
+  `SmallestModules`; never split full. Multi-file linker output must fail
+  today's concat path. Live-reload is ascent preview (ascent#52), not splice.
+  See §6.
 
 ### Still open
 
-- **Split modules on fast.** Default is one file. `js.dynamicImport` /
-  `ModuleSplitStyle` may want a tiny set; full stays one file until someone has
-  a measured load-time or cache-busting reason.
+- **`spliceFast` directory emit.** Implementation leftover, not a product
+  question. Needed before ascent should turn on `SmallModulesFor`. Fail-loud
+  on multi-file linker output can ship first.
 
 ## 8. Sharp edges (this plugin)
 

@@ -70,10 +70,14 @@ namespace. AMD-only `define()`, `export * from`, and `import.meta` fail the task
 and prepends the library; `spliceFull` does not feed that chunk to advanced
 mode.
 
-`spliceFast` is readable spliced JS. `spliceFull` is one Closure-advanced script.
-The plugin writes a file; it does not ship a JS engine. This repo's tests execute
-that file on GraalJS (JVM, test classpath only) to prove a real `@JSImport` runs
-with no Node.
+`spliceFast` is readable spliced JS (one file today). `spliceFull` is one
+Closure-advanced script. The plugin writes files; it does not live-reload and
+it does not ship a JS engine. A preview server (ascent, Specular `DocsServe`)
+serves the tree and reloads the tab. Do not copy Scala.js `SmallModulesFor`
+onto `spliceFast` until it emits a directory of linker chunks; concatenating
+those chunks is invalid ESM. This repo's tests execute the spliced file on
+GraalJS (JVM, test classpath only) to prove a real `@JSImport` runs with no
+Node.
 """
     ),
   )
