@@ -19,10 +19,10 @@ object SplicePlugin extends AutoPlugin:
 
   object autoImport:
     val spliceLibs = settingKey[Seq[SpliceLib]](
-      "Bare specifier to vendor file, WebJar, or CDN coordinate."
+      "Bare specifier to vendor file, WebJar, CDN, or GitHub tag tarball."
     )
     val spliceResolvers = settingKey[Seq[SpliceResolver]](
-      "Where to fetch remote JS. Maven/WebJar uses project resolvers; add Splice.jsDelivr / Splice.unpkg for CDNs."
+      "Where to fetch remote JS. Maven/WebJar uses project resolvers; add Splice.jsDelivr / Splice.unpkg for CDNs, Splice.github for tag tarballs."
     )
     val spliceFastOutput = settingKey[File]("Where spliceFast writes the spliced JS.")
     val spliceFullOutput = settingKey[File]("Where spliceFull writes the spliced JS.")

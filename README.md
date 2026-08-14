@@ -1,6 +1,6 @@
 # sbt-splice
 
-sbt 2 / Scala 3 plugin: remap `@JSImport` in IR, private-link, wrap pinned JS (vendor file, Maven/WebJar, or CDN fetch) onto `globalThis.__splice_*`, emit browser-loadable JavaScript. Zero Node.
+sbt 2 / Scala 3 plugin: remap `@JSImport` in IR, private-link, wrap pinned JS (vendor file, Maven/WebJar, CDN fetch, or GitHub tag tarball) onto `globalThis.__splice_*`, emit browser-loadable JavaScript. Zero Node.
 
 Coordinate: `rocks.earlyeffect` % `sbt-splice`
 
@@ -21,7 +21,7 @@ spliceLibs += Splice.lib("preact", "10.26.4", "dist/preact.module.js").sha256("â
 ```
 
 Output defaults to `target/splice/fast.js` and `target/splice/full.js`. Unresolved
-specifiers fail the task. CDN fetches require sha256; Maven/WebJar uses project
+specifiers fail the task. CDN fetches and GitHub tag tarballs require sha256; Maven/WebJar uses project
 `resolvers`. `spliceFull` runs Closure advanced on the spliced file (one script).
 `spliceFast` writes a source map by default; `spliceFull` does not. Tests in this
 repo execute that output on GraalJS (JVM, not published).

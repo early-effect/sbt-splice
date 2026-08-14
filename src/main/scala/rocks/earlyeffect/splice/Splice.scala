@@ -19,8 +19,18 @@ object Splice:
     (n, v, p) => s"https://unpkg.com/$n@$v/${p.stripPrefix("/")}",
   )
 
+  val github: SpliceResolver = SpliceResolver.GitHub { (owner, repo, tag) =>
+    s"https://github.com/$owner/$repo/archive/refs/tags/$tag.tar.gz"
+  }
+
+  def githubArchive(expand: (String, String, String) => String): SpliceResolver =
+    SpliceResolver.GitHub(expand)
+
   def cdn(id: String)(expand: (String, String, String) => String): SpliceResolver =
     SpliceResolver.Cdn(id, expand)
+
+  def github(specifier: String, repository: String, tag: String, path: String): SpliceLib.GitHub =
+    SpliceLib.GitHub(specifier, repository, tag, path, None)
 
   def file(specifier: String, file: File): SpliceLib.File =
     SpliceLib.File(specifier, file)

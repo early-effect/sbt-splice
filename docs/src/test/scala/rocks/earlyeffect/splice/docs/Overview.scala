@@ -13,7 +13,8 @@ emits browser-loadable JavaScript with bare module specifiers resolved. It never
 invokes npm, npx, or node, and it never reads a `package.json`.
 
 JS libraries arrive as pinned bytes: a file you vendor, a Maven/WebJar coordinate,
-or a fetch from jsDelivr / unpkg through Coursier. The plugin is general-purpose.
+or a fetch from jsDelivr / unpkg / a GitHub tag tarball through Coursier. The plugin
+is general-purpose.
 Any `@JSImport("some-lib")` (or CommonJS `require`) is in scope.
 """,
     section("Fast vs full")(

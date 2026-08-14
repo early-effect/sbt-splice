@@ -33,7 +33,7 @@ an ascent example) still follow publish. See §6.
 | modules | ESM / CJS / UMD / global wrap; `.extern` Closure hatch | done |
 | ir | Private link; `@JSImport` → Global in IR; no linker-JS regex rewrite | done |
 | maps | Configurable source maps (fast on, full off by default) | done |
-| github | Tag tarball resolver, sha256 pin | not started |
+| github | Tag tarball resolver, sha256 pin | done |
 
 ## Stack and style
 
@@ -109,12 +109,14 @@ Pulling in a pinned dep should feel like `resolvers` + `libraryDependencies`. Fe
 ```text
 spliceResolvers += Splice.jsDelivr
 spliceResolvers += Splice.unpkg
+spliceResolvers += Splice.github
 # Maven/WebJars already see the project's resolvers (Central, etc.)
 
 spliceLibs += Splice.lib("foo", "1.2.3", "dist/foo.module.js")
                  .sha256("…")              // required for CDN; Maven uses repo checksums
 spliceLibs += Splice.webjar("foo", "1.2.3", "dist/foo.module.js")
 spliceLibs += Splice.file("foo", baseDirectory.value / "vendor/foo.module.js")
+spliceLibs += Splice.github("foo", "owner/repo", "1.2.3", "dist/foo.js").sha256("…")
 ```
 
 The string `"foo"` is the bare specifier `@JSImport` uses. Version + path pick the file. The same shape is `"preact"` / `"htm"` / `"lit"` / anything else. Resolver list is search order, like Ivy: first hit that verifies wins. A project that must not talk to CDNs omits `Splice.jsDelivr` / `Splice.unpkg` and keeps WebJars + vendor files.
@@ -124,14 +126,14 @@ The string `"foo"` is the bare specifier `@JSImport` uses. Version + path pick t
 | **Vendor** | `File` in the repo | the file itself (git) | none |
 | **Maven / WebJar** | `ModuleID` + path inside the jar (`org.webjars.npm` % `{name}`) | Maven checksums | Coursier `update` in a dedicated `Splice` config (not on the Compile classpath) |
 | **CDN** | package + version + path, expanded by a resolver | **sha256 required** (jsDelivr/unpkg do not ship Maven `.sha256` files) | Coursier `FileCache` keyed by the expanded HTTPS URL (`CACHE/https/cdn.jsdelivr.net/…`) |
+| **GitHub** | `owner/repo` + exact tag + path inside the tag tarball | **sha256 required** (the tarball) | Coursier `FileCache` of `archive/refs/tags/{tag}.tar.gz`; extract one path after stripping the root dir |
 
 Built-in resolvers expand to GET-able URLs. Defaults we should ship because they host published package files **as-is** (no rewrite/bundle):
 
 - **jsDelivr:** `https://cdn.jsdelivr.net/npm/{name}@{version}/{path}`
 - **unpkg:** `https://unpkg.com/{name}@{version}/{path}`
 - **WebJars / Maven:** existing `resolvers`, artifact `org.webjars.npm` % `{name}` % `{version}`, then the path under `META-INF/resources/webjars/…`
-
-GitHub Releases (a source tarball or `.tgz` on a tag) is an optional extra resolver: fetch the archive through Coursier, extract one path. Still bytes only.
+- **GitHub:** `https://github.com/{owner}/{repo}/archive/refs/tags/{tag}.tar.gz` (opt-in via `Splice.github`). A 404 retries the `v`-prefixed tag. Hash mismatch fails immediately; do not fall across CDNs.
 
 **Do not default esm.sh** or other CDNs that rewrite/bundle. We want the file the package published, not a transformed module graph.
 
@@ -144,7 +146,7 @@ GitHub Releases (a source tarball or `.tgz` on a tag) is an optional extra resol
 - Do not run postinstall, lifecycle scripts, or any JS obtained from the fetch.
 - Do not clone a repo and build it.
 - Do not rewrite the Scala.js output to point at a live CDN. Fetch at **build** time, splice the bytes, emit a self-contained file.
-- Do not use a floating tag (`@1`, `@latest`). Version must be exact. Missing sha256 on a CDN coord fails the task. Hash mismatch fails the task.
+- Do not use a floating tag (`@1`, `@latest`) or a branch. GitHub tags must be exact. Missing sha256 on a CDN or GitHub coord fails the task. Hash mismatch fails the task.
 
 **Resolve.** Walk `import` / `export from` (and `require()` if the link was CommonJS). Look up each bare specifier in the map. Recurse into the file's own relative imports (`./plugin.js`). Relative paths inside a vendor file are resolved against that file, not against the map. If a remote fetch's file imports another bare specifier, that specifier needs its own map entry.
 
@@ -313,10 +315,10 @@ published). `pomOnly()` on `org.graalvm.polyglot:js` does not pull `js-language`
 ## 6. Next: pre-release, then publish, then adopt
 
 The phase-0–4 internals work. Remaining **in this repo** is the pre-release
-table at the top (GitHub tarballs). Central publish waits until
-that table is done. Consumers adopt from Central after that.
+table at the top (all waves done). Central publish waits until you cut that
+release. Consumers adopt from Central after that.
 
-1. **Finish the pre-release waves** (rename, modules, IR, and maps are done; GitHub remains).
+1. **Finish the pre-release waves** (rename, modules, IR, maps, and GitHub are done).
 2. **First Central publish** of `rocks.earlyeffect` % `sbt-splice`. Until that
    exists, consumers cannot depend on it.
 3. **preactile docs client.** `docs / specularJsLink` stops calling `npm install`
@@ -366,14 +368,16 @@ sbt-splice on its own after publish.
   off. Fast writes an indexed map whose first Scala.js section offset is the
   exact prepended wrapper line count, including blanks. Full, when enabled,
   asks Closure for a map. No vendor `.map` fetch.
+- **GitHub tarballs.** `Splice.github("foo", "owner/repo", "1.2.3", "path")`
+  plus `spliceResolvers += Splice.github`. sha256 pins the tarball. Extract
+  one path after stripping the archive root dir. 404 may retry `v{tag}`; a
+  hash mismatch fails immediately and does not search jsDelivr.
 
 ### Still open
 
 - **Split modules on fast.** Default is one file. `js.dynamicImport` /
   `ModuleSplitStyle` may want a tiny set; full stays one file until someone has
   a measured load-time or cache-busting reason.
-- **GitHub release tarballs.** Extra resolver. jsDelivr / unpkg / WebJars cover
-  typical packages.
 
 ## 8. Sharp edges (this plugin)
 

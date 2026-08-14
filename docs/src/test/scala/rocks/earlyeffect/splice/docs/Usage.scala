@@ -41,20 +41,27 @@ scalaJSLinkerConfig ~= { _.withModuleKind(ModuleKind.ESModule) }
   Source maps are off by default; set `spliceFull / spliceSourceMaps := true`
   to ask Closure for a map.
 
-Map bare specifiers to vendored files, WebJars, or pinned CDN coordinates:
+Map bare specifiers to vendored files, WebJars, pinned CDN coordinates, or a
+GitHub tag tarball:
 
 ```scala
 spliceResolvers += Splice.jsDelivr
+spliceResolvers += Splice.github
 
 spliceLibs += Splice.file("foo", baseDirectory.value / "vendor" / "foo.js")
 spliceLibs += Splice.webjar("htm", "3.1.4", "dist/htm.module.js")
 spliceLibs += Splice.lib("preact", "10.26.4", "dist/preact.module.js")
                  .sha256("…")
+spliceLibs += Splice.github("foo", "owner/repo", "1.2.3", "dist/foo.js")
+                 .sha256("…")
 ```
 
-CDN coordinates require `sha256`. Maven/WebJar uses the project's `resolvers`
-(a dedicated `splice` configuration, not the Compile classpath). Add
-`Splice.jsDelivr` or `Splice.unpkg` to opt into CDNs. Unresolved specifiers fail
+CDN and GitHub coordinates require `sha256`. Maven/WebJar uses the project's
+`resolvers` (a dedicated `splice` configuration, not the Compile classpath).
+Add `Splice.jsDelivr` or `Splice.unpkg` to opt into CDNs, and `Splice.github`
+to fetch `https://github.com/{owner}/{repo}/archive/refs/tags/{tag}.tar.gz`
+(a 404 retries the `v`-prefixed tag). The pin is the tarball; splice extracts
+one path after stripping GitHub's root directory. Unresolved specifiers fail
 the task and name the specifier and the referring file.
 
 Vendor files may be ESM, CJS, or UMD; splice wraps them so `@JSImport` sees a

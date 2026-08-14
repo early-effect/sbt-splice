@@ -1,0 +1,2 @@
+# Wrong sha256 on a GitHub tag tarball fails the task.
+-> spliceFast
