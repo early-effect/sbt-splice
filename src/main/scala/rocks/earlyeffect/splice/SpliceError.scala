@@ -11,6 +11,7 @@ enum SpliceError derives CanEqual:
   case NoResolver(specifier: String, kind: String)
   case NotFound(specifier: String, detail: String)
   case MissingJarPath(specifier: String, jar: String, path: String)
+  case Closure(detail: String)
   case Io(detail: String)
 
   def message: String = this match
@@ -32,6 +33,8 @@ enum SpliceError derives CanEqual:
       s"""sbt-splice: could not fetch "$specifier": $detail"""
     case MissingJarPath(specifier, jar, path) =>
       s"""sbt-splice: jar for "$specifier" ($jar) has no $path"""
+    case Closure(detail) =>
+      s"sbt-splice: Closure compiler failed:\n$detail"
     case Io(detail) =>
       s"sbt-splice: $detail"
 end SpliceError

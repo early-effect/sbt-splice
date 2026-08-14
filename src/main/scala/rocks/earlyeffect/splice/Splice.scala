@@ -47,17 +47,21 @@ object Splice:
     for
       _      <- checkLibFiles(input.libs)
       packed <- pack(input)
-      body = packed.blocks.mkString + packed.linkerJs
-      _ <- leftover(body, input.libs.keys, input.output)
+      spliced = packed.concat
+      _    <- leftover(spliced, input.libs.keys, input.output)
+      body <-
+        if input.optimize then Closure.optimize(packed.inputs)
+        else ZIO.succeed(spliced)
       _ <- write(input.output, body)
     yield input.output
 
-  private final case class Packed(blocks: List[String], linkerJs: String)
+  private final case class Packed(inputs: List[(String, String)]):
+    def concat: String = inputs.map(_._2).mkString
 
   private def pack(input: SpliceInput): IO[SpliceError, Packed] =
     ZIO.suspendSucceed {
       val ids    = mutable.Map.empty[String, String]
-      val blocks = mutable.ArrayBuffer.empty[String]
+      val blocks = mutable.ArrayBuffer.empty[(String, String)]
 
       def wrap(spec: String, path: Path): IO[SpliceError, String] =
         ids.get(spec) match
@@ -82,7 +86,7 @@ object Splice:
                     rewritten.linesIterator.exists(l => l.trim.startsWith("import "))
                 )(ZIO.fail(SpliceError.Io(s"could not wrap exports/imports in ${path.getFileName}")))
               yield
-                blocks +=
+                blocks += spec ->
                   s"""const $id = (() => {
                      |  const module = { exports: {} };
                      |  const exports = module.exports;
@@ -98,8 +102,9 @@ object Splice:
           unresolvedIn(file.contents, file.label, input.libs)
         _ <- ZIO.foreachDiscard(input.libs.toList.sortBy(_._1)): (spec, path) =>
           wrap(spec, path)
-        linkerJs = input.linker.map(f => JsModules.rewrite(f.contents, ids.toMap)).mkString("\n")
-      yield Packed(blocks.toList, linkerJs)
+        rewritten = input.linker.map(f => JsModules.rewrite(f.contents, ids.toMap)).mkString("\n")
+        linkerJs  = if input.optimize then JsModules.dropExports(rewritten) else rewritten
+      yield Packed(blocks.toList :+ ("linker.js" -> linkerJs))
     }
 
   private def checkLibFiles(libs: Map[String, Path]): IO[SpliceError, Unit] =

@@ -61,11 +61,13 @@ lazy val root = project
     scalacOptions ++= Seq("-deprecation", "-feature", "-Wunused:all"),
     addSbtPlugin("org.scala-js" % "sbt-scalajs" % scalaJsVersion),
     libraryDependencies ++= Seq(
-      "dev.zio" %% "zio"          % zioVersion,
-      "dev.zio" %% "zio-test"     % zioVersion % Test,
-      "dev.zio" %% "zio-test-sbt" % zioVersion % Test,
+      "dev.zio"         %% "zio"                 % zioVersion,
+      "dev.zio"         %% "zio-test"            % zioVersion % Test,
+      "dev.zio"         %% "zio-test-sbt"        % zioVersion % Test,
       ("io.get-coursier" % "coursier-cache_2.13" % "2.1.25-M26")
         .exclude("org.scala-lang.modules", "scala-collection-compat_2.13"),
+      // Same artifact Scala.js 1.22's scalajs-linker pins.
+      "com.google.javascript" % "closure-compiler" % "v20220202",
     ),
     testFrameworks += new TestFramework("zio.test.sbt.ZTestFramework"),
     scriptedLaunchOpts ++= Seq("-Xmx512m", s"-Dplugin.version=${version.value}"),

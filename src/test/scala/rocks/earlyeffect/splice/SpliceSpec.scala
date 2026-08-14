@@ -155,6 +155,63 @@ object SpliceSpec extends ZIOSpecDefault:
         )
         end for
       },
+      test("optimize drops unused spliced exports and leftover module syntax") {
+        for
+          dir <- tempDir
+          foo = dir.resolve("foo.js")
+          _ <- write(
+            foo,
+            """export function used() { return 1; }
+              |export function unused() { return "DEAD_CODE_MARKER"; }
+              |""".stripMargin,
+          )
+          out = dir.resolve("splice.js")
+          _ <- Splice.run(
+            SpliceInput(
+              linker = List(
+                LinkerFile(
+                  "main.js",
+                  """import { used } from "foo";
+                    |used();
+                    |export { used };
+                    |""".stripMargin,
+                )
+              ),
+              libs = Map("foo" -> foo),
+              output = out,
+              optimize = true,
+            )
+          )
+          body <- ZIO.attempt(Files.readString(out))
+        yield assertTrue(
+          !body.contains("DEAD_CODE_MARKER"),
+          !body.contains("export "),
+          !body.contains("""from "foo""""),
+        )
+      },
+      test("optimize fails the program when Closure cannot parse a spliced file") {
+        for
+          dir <- tempDir
+          foo = dir.resolve("foo.js")
+          _ <- write(foo, "const x = {")
+          out = dir.resolve("splice.js")
+          err <- Splice
+            .run(
+              SpliceInput(
+                linker = List(LinkerFile("main.js", """import * as Foo from "foo";""")),
+                libs = Map("foo" -> foo),
+                output = out,
+                optimize = true,
+              )
+            )
+            .flip
+        yield assertTrue(
+          err match
+            case SpliceError.Closure(detail) =>
+              detail.nonEmpty && err.message.startsWith("sbt-splice: Closure compiler failed:")
+            case _ => false
+        )
+      },
     )
 
   private def vendorBytes(name: String): Array[Byte] =

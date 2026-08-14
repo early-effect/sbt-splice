@@ -10,4 +10,5 @@ final case class SpliceInput(
     linker: List[LinkerFile],
     libs: Map[String, Path],
     output: Path,
+    optimize: Boolean = false,
 )

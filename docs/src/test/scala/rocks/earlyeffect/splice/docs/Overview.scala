@@ -33,10 +33,10 @@ Neither task reimplements the Scala.js linker.
     ),
     section("Status")(
       md"""
-Phase 2 maps specifiers to vendor files, WebJars, or pinned CDN fetches through
-Coursier. See
+Phase 3 maps specifiers, then `spliceFull` runs Closure advanced on the combined
+file (same `closure-compiler` artifact Scala.js 1.22 pins: `v20220202`). See
 [ROADMAP.md](https://github.com/early-effect/sbt-splice/blob/main/ROADMAP.md)
-for Closure (Phase 3) and a real-library run (Phase 4).
+for a real-library run (Phase 4).
 """
     ),
   )

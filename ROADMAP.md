@@ -18,7 +18,7 @@ GitHub: `early-effect/sbt-splice`. Local: `~/projects/fun/sbt-splice`. Coordinat
 | 0 | sbt 2 plugin skeleton, publish identity, empty task | done |
 | 1 | File-mapped specifiers after `fastLinkJS`; unresolved import fails | done |
 | 2 | Resolvers + Coursier cache: Maven/WebJar, jsDelivr, unpkg | done |
-| 3 | Full optimize via Scala.js minify + post-link Closure; size budget | not started |
+| 3 | Full optimize via Scala.js minify + post-link Closure; size budget | done |
 | 4 | Scripted `@JSImport` of a vendored library runs without Node | not started |
 
 This file is forward-looking. Git history records what shipped.
@@ -266,14 +266,14 @@ Vendor files from Phase 1 stay the zero-network path. Remotes are opt-in via res
 
 Checkable:
 
-- [ ] `spliceFull` depends on `fullLinkJS` (minify on)
-- [ ] After splice, run Closure advanced on the combined file via `com.google.javascript % closure-compiler` (same artifact Scala.js uses; version pinned in the plugin, documented if it diverges from Scala.js)
-- [ ] Default full artifact is one script
-- [ ] Each spliced file is a Closure input; browser/Scala.js names are externs
-- [ ] Size budget: output strictly smaller than unminified concat of the same `fullLinkJS` plus the same vendor file(s); numbers asserted in scripted
-- [ ] Closure errors fail the task
-- [ ] sbt task cache skips Closure when linker digest + vendor digests + Closure version + settings are unchanged
-- [ ] Still no Node
+- [x] `spliceFull` depends on `fullLinkJS` (minify on)
+- [x] After splice, run Closure advanced on the combined file via `com.google.javascript % closure-compiler` (same artifact Scala.js uses; version pinned in the plugin, documented if it diverges from Scala.js)
+- [x] Default full artifact is one script
+- [x] Each spliced file is a Closure input; browser/Scala.js names are externs
+- [x] Size budget: output strictly smaller than unminified concat of the same `fullLinkJS` plus the same vendor file(s); numbers asserted in scripted
+- [x] Closure errors fail the task
+- [x] sbt task cache skips Closure when linker digest + vendor digests + Closure version + settings are unchanged
+- [x] Still no Node
 
 ### Phase 4: a real `@JSImport` runs, no Node
 
@@ -303,8 +303,8 @@ Specular #55 is the adopt ticket on the docs-site side. Preactile adopts sbt-spl
 
 - **Module kind default.** Fast: follow the project (`ESModule` for `@JSImport`). Full: emit a script after Closure. Confirm whether consumers that use `<script type="module">` (Specular's docs client, others) can load that, or whether full must also emit ESM (and then Closure-on-ESM is off the table). Default: leave the linker alone; reshape at splice.
 - **One file vs split.** Default one file. `js.dynamicImport` / `ModuleSplitStyle` may want a tiny set on fast. Full stays one file until someone has a measured load-time or cache-busting reason.
-- **Source maps.** Fast should preserve or stitch the linker map through rewrite/inline. Full + Closure maps are harder. First version may drop maps on `spliceFull`; that must be explicit, not silent.
-- **Closure version.** Pin Scala.js's JAR for maximum familiarity, or a newer GCC now that we are on JDK 25? Default: start on the artifact Scala.js uses; bump only with a size/correctness note. If the linker drops GCC entirely, keep using the compiler JAR as a plugin dependency. Do not switch to a Node minifier to "follow Scala.js".
+- **Source maps.** Fast should preserve or stitch the linker map through rewrite/inline. Full + Closure maps are harder. **`spliceFull` drops maps** in Phase 3; that is explicit in Usage.
+- **Closure version.** Pin Scala.js's JAR for maximum familiarity, or a newer GCC now that we are on JDK 25? Default: start on the artifact Scala.js uses; bump only with a size/correctness note. If the linker drops GCC entirely, keep using the compiler JAR as a plugin dependency. Do not switch to a Node minifier to "follow Scala.js". **Pinned `v20220202`**, matching Scala.js 1.22's `scalajs-linker`.
 - **CJS vs ESM vendor files.** Libraries ship both. Prefer ESM for fast-as-modules; for full, either is fine once inlined. Nested specifiers (`foo/plugin`) need their own map entries (each its own pin). Do not invent an npm `"exports"` walk.
 - **Resolver search vs explicit source.** Ivy searches `resolvers` in order. Doing that for jsDelivr then unpkg could yield different bytes for the same coordinate. Default: Maven/WebJar if the user asked for a WebJar; otherwise the first *enabled* CDN resolver. Allow pinning a lib to one resolver. Do not silently fall across CDNs.
 - **FileCache vs `update`.** WebJars fit `update` in a `Splice` config. CDN files may be easier as `FileCache.file(url + checksum)` than as fake `ModuleID`s. One cache (`csrCacheDirectory`) either way. Confirm the lm-coursier API on sbt 2 before picking; do not use `ModuleID.from` as the advertised API.

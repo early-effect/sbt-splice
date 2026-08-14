@@ -32,8 +32,10 @@ scalaJSLinkerConfig ~= { _.withModuleKind(ModuleKind.ESModule) }
       md"""
 - `spliceFast` depends on `Compile / fastLinkJS`, then splices mapped files into
   `spliceFastOutput` (default `target/splice/fast.js`).
-- `spliceFull` depends on `Compile / fullLinkJS` and splices the same way.
-  Closure on the combined file is Phase 3.
+- `spliceFull` depends on `Compile / fullLinkJS`, splices the same map, then
+  runs Closure advanced on the combined file. The default artifact is one
+  script (`target/splice/full.js`), not an ES module. Source maps are not
+  produced on this path yet.
 
 Map bare specifiers to vendored files, WebJars, or pinned CDN coordinates:
 

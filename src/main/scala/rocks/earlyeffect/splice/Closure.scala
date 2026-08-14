@@ -1,0 +1,134 @@
+package rocks.earlyeffect.splice
+
+import com.google.javascript.jscomp.{
+  CheckLevel,
+  CommandLineRunner,
+  CompilationLevel,
+  Compiler,
+  CompilerOptions,
+  DiagnosticGroups,
+  JSError,
+  SourceFile,
+}
+import zio.*
+
+import java.nio.charset.StandardCharsets
+import java.nio.file.{Files, Path}
+import java.security.MessageDigest
+import java.util.ArrayList
+import java.util.logging.Level
+import scala.annotation.nowarn
+
+/** Post-link Closure advanced pass. Same JAR Scala.js 1.22 pins (`v20220202`). */
+object Closure:
+
+  val Version: String = "v20220202"
+
+  private val lock = new Object
+
+  /** Protected names from `ClosureLinkerBackend.ScalaJSExterns` (Scala.js 1.22). */
+  private[splice] val ScalaJSExterns: String =
+    """
+      |var Object;
+      |Object.prototype.constructor;
+      |Object.prototype.toString;
+      |Object.prototype.$classData;
+      |var Array;
+      |Array.prototype.length;
+      |var Function;
+      |Function.prototype.call;
+      |Function.prototype.apply;
+      |var NaN = 0.0/0.0, Infinity = 1.0/0.0, undefined = void 0;
+      |""".stripMargin
+
+  /** Host names the spliced program may touch that builtin externs can miss. */
+  private[splice] val BrowserExterns: String =
+    """
+      |var globalThis;
+      |""".stripMargin
+
+  def optimize(inputs: List[(String, String)]): IO[SpliceError, String] =
+    ZIO
+      .attemptBlocking(lock.synchronized(compile(inputs)))
+      .mapError(e => SpliceError.Io(s"Closure: ${e.getMessage}"))
+      .flatMap {
+        case Left(err) => ZIO.fail(err)
+        case Right(js) => ZIO.succeed(js)
+      }
+
+  def programDigest(linker: List[LinkerFile], libs: Map[String, Path], output: Path): String =
+    val md                   = MessageDigest.getInstance("SHA-256")
+    def add(s: String): Unit =
+      md.update(s.getBytes(StandardCharsets.UTF_8))
+    add(Version)
+    add(ScalaJSExterns)
+    add(BrowserExterns)
+    add(output.toAbsolutePath.normalize.toString)
+    linker.sortBy(_.label).foreach { f =>
+      add(f.label)
+      add(f.contents)
+    }
+    libs.toList.sortBy(_._1).foreach { (spec, path) =>
+      add(spec)
+      md.update(Files.readAllBytes(path))
+    }
+    md.digest.map("%02x".format(_)).mkString
+  end programDigest
+
+  def cacheHit(stamp: Path, digest: String, output: Path): Boolean =
+    Files.isRegularFile(output) &&
+      Files.isRegularFile(stamp) &&
+      Files.readString(stamp).trim == digest
+
+  def storeCache(stamp: Path, digest: String): Unit =
+    Option(stamp.getParent).foreach(Files.createDirectories(_))
+    Files.writeString(stamp, digest)
+    ()
+
+  private def compile(inputs: List[(String, String)]): Either[SpliceError, String] =
+    Compiler.setLoggingLevel(Level.OFF)
+    val compiler = new Compiler()
+    compiler.disableThreads()
+    val options = new CompilerOptions()
+    CompilationLevel.ADVANCED_OPTIMIZATIONS.setOptionsForCompilationLevel(options)
+    options.setLanguageIn(CompilerOptions.LanguageMode.ECMASCRIPT_2021)
+    options.setLanguageOut(CompilerOptions.LanguageMode.ECMASCRIPT_2015)
+    options.setPrettyPrint(false)
+    options.setRewritePolyfills(false)
+    options.setEnvironment(CompilerOptions.Environment.BROWSER)
+    options.setWarningLevel(DiagnosticGroups.GLOBAL_THIS, CheckLevel.OFF)
+    options.setWarningLevel(DiagnosticGroups.DUPLICATE_VARS, CheckLevel.OFF)
+    options.setWarningLevel(DiagnosticGroups.CHECK_REGEXP, CheckLevel.OFF)
+    options.setWarningLevel(DiagnosticGroups.CHECK_TYPES, CheckLevel.OFF)
+    options.setWarningLevel(DiagnosticGroups.CHECK_USELESS_CODE, CheckLevel.OFF)
+
+    val externs = new ArrayList[SourceFile](defaultExterns())
+    externs.add(SourceFile.fromCode("ScalaJSExterns.js", ScalaJSExterns))
+    externs.add(SourceFile.fromCode("SpliceBrowserExterns.js", BrowserExterns))
+
+    val sources = new ArrayList[SourceFile](inputs.size)
+    inputs.foreach { (name, code) =>
+      sources.add(SourceFile.fromCode(name, code))
+    }
+
+    val result = compiler.compile(externs, sources, options)
+    if !result.success then Left(SpliceError.Closure(formatErrors(compiler)))
+    else Right(compiler.toSource)
+  end compile
+
+  @nowarn("cat=deprecation")
+  private def defaultExterns(): java.util.List[SourceFile] =
+    CommandLineRunner.getDefaultExterns()
+
+  private def formatErrors(compiler: Compiler): String =
+    val errors = compiler.getErrors
+    if errors == null || errors.isEmpty then "unknown Closure error"
+    else
+      val it = errors.iterator()
+      val b  = List.newBuilder[String]
+      while it.hasNext do b += formatError(it.next())
+      b.result().mkString("\n")
+
+  private def formatError(err: JSError): String =
+    s"${err.getSourceName}:${err.getLineNumber}: ${err.getDescription}"
+end Closure
