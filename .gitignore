@@ -1,0 +1,17 @@
+target/
+project/target/
+project/project/
+.bsp/
+.metals/
+.bloop/
+.idea/
+*.iml
+.DS_Store
+# sbt 2 generates this; a hand-written copy duplicates the AutoPlugin entry.
+src/main/resources/sbt/
+.cursor/
+.vscode/
+metals.sbt
+# Metals / IDE
+*.semanticdb
+build.sbt.semanticdb
