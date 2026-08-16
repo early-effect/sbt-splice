@@ -1,11 +1,5 @@
-val scala3Version   = "3.8.4"
-val zioVersion      = "2.1.26"
-val specularVersion = "0.12.1"
-val scalaJsVersion  = "1.22.0"
-val chekhovVersion  = "0.0.3"
-val graalVersion    = "25.2.4"
+MyVersions.settings
 
-scalaVersion         := scala3Version
 organization         := "rocks.earlyeffect"
 organizationName     := "Early Effect"
 organizationHomepage := Some(url("https://www.earlyeffect.rocks"))
@@ -38,7 +32,17 @@ publishTo := {
 // CI-only publishing: key hex from PGP_KEY_HEX (org secret). Sentinel keeps local loads working.
 usePgpKeyHex(sys.env.getOrElse("PGP_KEY_HEX", "MISSING_KEY_HEX"))
 
-val Fmt = CapabilityName("fmt")
+val Fmt    = CapabilityName("fmt")
+val scalac = Seq("-deprecation", "-feature", "-Wunused:all")
+
+val pluginSettings = Seq(
+  scalacOptions ++= scalac,
+  testFrameworks += new TestFramework("zio.test.sbt.ZTestFramework"),
+  scriptedLaunchOpts ++= Seq("-Xmx512m", s"-Dplugin.version=${version.value}"),
+  scriptedBufferLog    := false,
+  publishMavenStyle    := true,
+  pomIncludeRepository := { _ => false },
+)
 
 zipxJavaVersion      := JdkVersion("25")
 zipxWorkflowDispatch := true
@@ -52,40 +56,38 @@ zipxEnv := Map(
 
 lazy val root = project
   .in(file("."))
+  .disablePlugins(chekhov.sbt.ChekhovPlugin)
+  .aggregate(plugin, spliceZipx, docs)
+  .settings(
+    name           := "sbt-splice-root",
+    publish / skip := true,
+  )
+
+lazy val plugin = project
+  .in(file("plugin"))
   .enablePlugins(SbtPlugin)
   .disablePlugins(chekhov.sbt.ChekhovPlugin)
-  .aggregate(docs)
   .settings(
     name        := "sbt-splice",
     description :=
       "sbt 2 plugin: splice pinned JS into Scala.js linker output, no Node",
-    scalacOptions ++= Seq("-deprecation", "-feature", "-Wunused:all"),
-    addSbtPlugin("org.scala-js" % "sbt-scalajs" % scalaJsVersion),
-    libraryDependencies ++= Seq(
-      "dev.zio"         %% "zio"                 % zioVersion,
-      "dev.zio"         %% "zio-test"            % zioVersion % Test,
-      "dev.zio"         %% "zio-test-sbt"        % zioVersion % Test,
-      ("io.get-coursier" % "coursier-cache_2.13" % "2.1.25-M26")
-        .exclude("org.scala-lang.modules", "scala-collection-compat_2.13"),
-      // sbt-scalajs does not always export IR types onto a Scala 3 plugin classpath.
-      "org.scala-js" %% "scalajs-ir"               % scalaJsVersion,
-      "org.scala-js" %% "scalajs-linker-interface" % scalaJsVersion,
-      // Same artifact Scala.js 1.22's scalajs-linker pins.
-      "com.google.javascript" % "closure-compiler" % "v20220202",
-      "org.apache.commons"    % "commons-compress" % "1.28.0",
-      // Test-only: prove spliced output runs on a JVM JS engine. Not published.
-      "org.graalvm.polyglot" % "polyglot"        % graalVersion % Test,
-      "org.graalvm.js"       % "js-language"     % graalVersion % Test,
-      "org.graalvm.truffle"  % "truffle-runtime" % graalVersion % Test,
-    ),
-    testFrameworks += new TestFramework("zio.test.sbt.ZTestFramework"),
-    scriptedLaunchOpts ++= Seq("-Xmx512m", s"-Dplugin.version=${version.value}"),
-    scriptedBufferLog    := false,
-    publishMavenStyle    := true,
-    pomIncludeRepository := { _ => false },
-    // Plugin lives on this aggregator. zipx otherwise skips it (docs is aggregated; docs/e2e skip publish).
-    zipxPublish := zipxOn,
+    addSbtPlugin("org.scala-js" % "sbt-scalajs" % (MyVersions.scalajsIr.version: String)),
   )
+  .settings(pluginSettings)
+  .settings(MyVersions.plugin)
+
+lazy val spliceZipx = project
+  .in(file("zipx"))
+  .enablePlugins(SbtPlugin)
+  .disablePlugins(chekhov.sbt.ChekhovPlugin)
+  .dependsOn(plugin)
+  .settings(
+    name        := "sbt-splice-zipx",
+    description := "Opt-in zipx pin feed for sbt-splice library pins",
+    addSbtPlugin("rocks.earlyeffect" % "sbt-zipx" % "0.6.2"),
+  )
+  .settings(pluginSettings)
+  .settings(MyVersions.spliceZipx)
 
 lazy val docs = project
   .in(file("docs"))
@@ -94,18 +96,10 @@ lazy val docs = project
   .settings(
     name           := "sbt-splice-docs",
     publish / skip := true,
-    scalacOptions ++= Seq("-deprecation", "-feature", "-Wunused:all"),
-    libraryDependencies ++= Seq(
-      "rocks.earlyeffect" %% "specular-core"           % specularVersion % Test,
-      "rocks.earlyeffect" %% "specular-zio-test"       % specularVersion % Test,
-      "rocks.earlyeffect" %% "specular-site"           % specularVersion % Test,
-      "rocks.earlyeffect" %% "early-effect-docs-theme" % specularVersion % Test,
-      "dev.zio"           %% "zio-test"                % zioVersion      % Test,
-      "dev.zio"           %% "zio-test-sbt"            % zioVersion      % Test,
-    ),
+    scalacOptions ++= scalac,
     Test / mainClass       := Some("specular.site.DocsServe"),
     specularBuildMain      := "rocks.earlyeffect.splice.docs.BuildSite",
-    specularMetaProject    := Some(LocalProject("root")),
+    specularMetaProject    := Some(LocalProject("plugin")),
     specularArtifactKind   := "plugin",
     specularSiteDirectory  := (LocalRootProject / baseDirectory).value / "target" / "site",
     specularDisplayVersion := {
@@ -116,21 +110,16 @@ lazy val docs = project
         v
     },
   )
+  .settings(MyVersions.docs)
 
 // Browser suites. Not aggregated so local `testFull` stays Node-free; CI runs `e2e/testFull`.
 lazy val e2e = project
   .in(file("e2e"))
-  .dependsOn(root % "compile->compile;test->test")
+  .dependsOn(plugin % "compile->compile;test->test")
   .settings(
     name           := "sbt-splice-e2e",
     publish / skip := true,
-    scalacOptions ++= Seq("-deprecation", "-feature", "-Wunused:all"),
-    libraryDependencies ++= Seq(
-      "dev.zio"           %% "zio-test"         % zioVersion     % Test,
-      "dev.zio"           %% "zio-test-sbt"     % zioVersion     % Test,
-      "rocks.earlyeffect" %% "chekhov-zio-test" % chekhovVersion % Test,
-      "rocks.earlyeffect" %% "chekhov-driver"   % chekhovVersion % Test,
-    ),
+    scalacOptions ++= scalac,
     testFrameworks += new TestFramework("zio.test.sbt.ZTestFramework"),
     chekhovBrowser := "firefox",
     // sbt-chekhov 0.0.3 installs every engine; this suite only smokes Firefox.
@@ -152,13 +141,20 @@ lazy val e2e = project
       }
     },
   )
+  .settings(MyVersions.e2e)
 
 zipxCapabilities += Capability
   .once(
     name = Capability.TestName,
-    command = zipxTasks.session(e2e / chekhovInstall, testFull, e2e / testFull, scripted),
+    command = zipxTasks.session(
+      e2e / chekhovInstall,
+      testFull,
+      e2e / testFull,
+      plugin / scripted,
+      spliceZipx / scripted,
+    ),
     needsCapabilities = List(Fmt),
   )
   .withNodeVersion(NodeVersion("24"))
 
-addCommandAlias("release", "; publishSigned; sonaRelease")
+addCommandAlias("release", "; plugin/publishSigned; spliceZipx/publishSigned; sonaRelease")
