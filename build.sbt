@@ -71,7 +71,7 @@ lazy val root = project
       "org.scala-js" %% "scalajs-ir"               % scalaJsVersion,
       "org.scala-js" %% "scalajs-linker-interface" % scalaJsVersion,
       // Same artifact Scala.js 1.22's scalajs-linker pins.
-      "com.google.javascript" % "closure-compiler" % "v20220202",
+      "com.google.javascript" % "closure-compiler" % "v20260811",
       "org.apache.commons"    % "commons-compress" % "1.28.0",
       // Test-only: prove spliced output runs on a JVM JS engine. Not published.
       "org.graalvm.polyglot" % "polyglot"        % graalVersion % Test,
