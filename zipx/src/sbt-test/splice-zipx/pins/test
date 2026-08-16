@@ -1,0 +1,12 @@
+# Opt-in splice-zipx: self-emit plugin lines, pin-check generate, apply rewrites version+sha256.
+> zipxWorkflowGenerate
+$ exists project/plugins.sbt
+$ exists .github/workflows/ci.yml
+$ exists .github/workflows/zipx-pin-check.yml
+$ absent .github/workflows/zipx-pin-snapshot.yml
+> assertPlugins
+> assertPinFeeds
+> zipxWorkflowCheck
+> zipxPinUpdate dry-run
+> zipxPinUpdate yes
+> assertPinUpdate

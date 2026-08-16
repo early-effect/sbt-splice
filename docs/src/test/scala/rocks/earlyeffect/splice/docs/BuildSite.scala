@@ -9,15 +9,16 @@ import java.nio.file.Path
 /** Docs-as-tests site builder (Test classpath; `docs/specularSite`). */
 object BuildSite extends DocsSite:
 
-  def pages = Vector(Overview.doc, Usage.doc)
+  def pages = Vector(Overview.doc, Usage.doc, KeepingPins.doc)
 
   override def site: SiteModel =
     val m = meta
     super.site.copy(
       summaryMarkdown = Some(
-        s"""**sbt-splice** takes Scala.js linker output and produces browser-loadable JavaScript
-with bare module specifiers resolved. Zero Node: JS libraries arrive as pinned bytes
-(vendor file, Maven/WebJar, or CDN fetch). sbt 2 and Scala 3 only.
+        s"""**sbt-splice** turns `@JSImport("preact")` into one browser-loadable script. Scala.js
+still emits `import "preact"`; a browser cannot resolve that specifier. You map each name
+to pinned bytes (a file, a WebJar, or a CDN/GitHub download with sha256). Then `spliceFast`
+or `spliceFull` writes a file for a `<script>` tag. sbt 2 and Scala 3 only.
 """
       ),
       installSnippets = Vector(

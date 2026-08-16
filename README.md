@@ -1,6 +1,9 @@
 # sbt-splice
 
-sbt 2 / Scala 3 plugin: remap `@JSImport` in IR, private-link, wrap pinned JS (vendor file, Maven/WebJar, CDN fetch, or GitHub tag tarball) onto `globalThis.__splice_*`, emit browser-loadable JavaScript. Zero Node.
+Scala.js emits `import "preact"` for `@JSImport("preact")` (or `require`). A browser cannot resolve that **specifier**:
+there is no `node_modules`. **sbt-splice** is an sbt 2 / Scala 3 plugin that maps each specifier to pinned bytes (a
+file you copied, a WebJar, or a CDN/GitHub download with sha256) and writes one script for a `<script>` tag.
+`spliceFast` is development; `spliceFull` is production (Closure). The plugin never runs npm.
 
 Coordinate: `rocks.earlyeffect` % `sbt-splice`
 
@@ -9,24 +12,18 @@ Coordinate: `rocks.earlyeffect` % `sbt-splice`
 addSbtPlugin("rocks.earlyeffect" % "sbt-splice" % "<version>")
 ```
 
-Map a bare specifier to a vendored file, WebJar, or pinned CDN file, then run
-`spliceFast` or `spliceFull`:
+Enable Scala.js, map one library, run `spliceFast`:
 
 ```scala
 enablePlugins(ScalaJSPlugin)
 scalaJSLinkerConfig ~= { _.withModuleKind(ModuleKind.ESModule) }
 spliceResolvers += Splice.jsDelivr
-spliceLibs += Splice.file("foo", baseDirectory.value / "vendor" / "foo.js")
 spliceLibs += Splice.lib("preact", "10.26.4", "dist/preact.module.js").sha256("…")
 ```
 
-Output defaults to `target/splice/fast.js` and `target/splice/full.js`. Unresolved
-specifiers fail the task. CDN fetches and GitHub tag tarballs require sha256; Maven/WebJar uses project
-`resolvers`. `spliceFull` runs Closure advanced on the spliced file (one script).
-`spliceFast` writes a source map by default; `spliceFull` does not. Tests in this
-repo execute that output on GraalJS (JVM, not published).
-
-The plugin is not released yet. Design and phases: [ROADMAP.md](ROADMAP.md).
+Output defaults to `target/splice/fast.js` and `target/splice/full.js`. Unresolved specifiers fail the task. CDN and
+GitHub pins require sha256; a WebJar uses project `resolvers`. The plugin is not released yet. Design:
+[ROADMAP.md](ROADMAP.md).
 
 ## License
 

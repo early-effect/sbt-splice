@@ -8,23 +8,26 @@ object Overview extends DocSpecSuite:
 
   def doc = page("Overview")(
     md"""
-**sbt-splice** is an sbt 2 / Scala 3 plugin that takes Scala.js linker output and
-emits browser-loadable JavaScript with bare module specifiers resolved. It never
-invokes npm, npx, or node, and it never reads a `package.json`.
+Scala.js lets you write `import "preact"` from Scala, usually with `@JSImport("preact")` (or `require` for CommonJS).
+The linker then emits a JavaScript file that still says `import "preact"`.
 
-JS libraries arrive as pinned bytes: a file you vendor, a Maven/WebJar coordinate,
-or a fetch from jsDelivr / unpkg / a GitHub tag tarball through Coursier. The plugin
-is general-purpose.
-Any `@JSImport("some-lib")` (or CommonJS `require`) is in scope.
+A browser cannot resolve that name. There is no `node_modules` folder next to the file, and the browser does not
+ask npm what `"preact"` means. The leftover name is a **specifier**: the string `@JSImport` used, which must become
+real bytes before the page can load.
+
+**sbt-splice** is how you name those bytes. You point each specifier at a file you copied into the repo, a
+**WebJar** (the same file published on Maven), or a **pin** (a CDN or GitHub download whose version and **sha256**
+checksum you wrote down). Then `spliceFast` (development) or `spliceFull` (production) writes **one** JavaScript
+file you can put in a `<script>` tag.
 """,
     section("Fast vs full")(
       md"""
-`spliceFast` private-links remapped IR (development, seconds, readable enough).
-`spliceFull` private-links remapped IR and is the production path (small, efficient).
-Vanilla `fastLinkJS` / `fullLinkJS` are unchanged; splice does not rewrite their JS.
+`spliceFast` is the development build: readable enough, usually seconds. `spliceFull` is the production build: the
+same libraries, then **Closure** (a JVM minifier) so the file is small. Vanilla Scala.js `fastLinkJS` / `fullLinkJS`
+are unchanged; splice writes its own output next to them.
 """,
       exampleValue {
-        List("spliceFast" -> "private remapped link", "spliceFull" -> "private remapped link + Closure")
+        List("spliceFast" -> "development", "spliceFull" -> "production + Closure")
       }.assert { pairs =>
         assertTrue(
           pairs.head._1 == "spliceFast",
@@ -32,12 +35,11 @@ Vanilla `fastLinkJS` / `fullLinkJS` are unchanged; splice does not rewrite their
         )
       },
     ),
-    section("Status")(
+    section("If you already use Node")(
       md"""
-Phase 4 maps specifiers and **runs** the spliced file: `spliceFast` and
-`spliceFull` of a real `@JSImport("preact")` execute on GraalJS (JVM, no Node).
-See [ROADMAP.md](https://github.com/early-effect/sbt-splice/blob/main/ROADMAP.md)
-for first-consumer adoption.
+Skip this note if you are not coming from webpack, Vite, or npm. Those tools start from a `package.json` and a
+`node_modules` tree. Splice does not. It never runs npm, never reads `package.json`, and never leaves `import "preact"`
+for a bundler to fix. If you already have a Node pipeline, splice is a different path, not a plugin for that pipeline.
 """
     ),
   )
