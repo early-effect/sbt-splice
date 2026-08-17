@@ -1,0 +1,5 @@
+# spliceFull of a Scala-only app: JDK underscore names + host free-vars.
+> spliceFull
+$ exists target/splice/full.js
+> es/spliceFull
+$ exists es/target/splice/full.js

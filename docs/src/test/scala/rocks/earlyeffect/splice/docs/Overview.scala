@@ -19,12 +19,15 @@ real bytes before the page can load.
 **WebJar** (the same file published on Maven), or a **pin** (a CDN or GitHub download whose version and **sha256**
 checksum you wrote down). Then `spliceFast` (development) or `spliceFull` (production) writes **one** JavaScript
 file you can put in a `<script>` tag.
+
+If the program has no npm imports, leave `spliceLibs` empty. `spliceFull` is still the Node-free production
+bundle (Scala.js minify, then Closure). `NoModule` is the natural linker kind in that case.
 """,
     section("Fast vs full")(
       md"""
-`spliceFast` is the development build: readable enough, usually seconds. `spliceFull` is the production build: the
-same libraries, then **Closure** (a JVM minifier) so the file is small. Vanilla Scala.js `fastLinkJS` / `fullLinkJS`
-are unchanged; splice writes its own output next to them.
+`spliceFast` is the development build: readable enough, usually seconds. `spliceFull` is the production build:
+Scala.js minify, then **Closure** (a JVM minifier) so the file is small. That pass runs even when `spliceLibs` is
+empty. Vanilla Scala.js `fastLinkJS` / `fullLinkJS` are unchanged; splice writes its own output next to them.
 """,
       exampleValue {
         List("spliceFast" -> "development", "spliceFull" -> "production + Closure")

@@ -48,13 +48,14 @@ assertPlugins := {
   )
 }
 
-val assertPinFeeds = taskKey[Unit]("assert pin-check job and companion, no snapshot")
+val assertPinFeeds = taskKey[Unit]("assert pin-check companion, advisories job, no snapshot")
 assertPinFeeds := {
   val root  = (LocalRootProject / baseDirectory).value
   val ci    = IO.read(root / ".github" / "workflows" / "ci.yml")
   val check = IO.read(root / ".github" / "workflows" / "zipx-pin-check.yml")
-  assert(ci.contains("pin-check:"), "ci.yml should contain the pin-check job")
-  assert(ci.contains("zipxPinCheckPr") || ci.contains("zipxPinCheckPr'"), "pin-check should run zipxPinCheckPr")
+  assert(ci.contains("advisories:"), "ci.yml should contain the advisories job")
+  assert(ci.contains("zipxAdvisoryCheck"), "advisories should run zipxAdvisoryCheck")
+  assert(!ci.contains("pin-check:"), "pin OSV on a PR folds into advisories, not a ci.yml pin-check job")
   assert(check.contains("sbt zipxPinCheck"), "pin-check companion should run zipxPinCheck")
   assert(
     !(root / ".github" / "workflows" / "zipx-pin-snapshot.yml").exists,
@@ -62,12 +63,20 @@ assertPinFeeds := {
   )
 }
 
-val assertPinUpdate = taskKey[Unit]("assert zipxPinUpdate yes rewrote version and sha256")
+val assertPinUpdate = taskKey[Unit]("assert zipxPinUpdate yes rewrote catalog Pin and spliceLibs")
 assertPinUpdate := {
-  val text   = IO.read((LocalRootProject / baseDirectory).value / "build.sbt")
+  val root   = (LocalRootProject / baseDirectory).value
+  val text   = IO.read(root / "build.sbt")
+  val catalog = IO.read(root / "project" / "ZipxVersions.scala")
   val oldSha = "aa" * 32
   val newSha = "bb" * 32
   assert(text.contains(""".lib("foo", "1.0.1", "foo.js")"""), s"expected bumped foo pin, got:\n$text")
   assert(text.contains(newSha), s"expected new sha256, got:\n$text")
   assert(!text.contains(oldSha), s"old sha256 should be gone, got:\n$text")
+  assert(
+    catalog.contains("""Pin("splice", "foo", "1.0.1""""),
+    s"expected bumped catalog Pin, got:\n$catalog",
+  )
+  assert(catalog.contains(newSha), s"expected new sha256 in catalog, got:\n$catalog")
+  assert(catalog.contains("""purl = "pkg:npm/foo@1.0.1""""), s"expected bumped purl, got:\n$catalog")
 }

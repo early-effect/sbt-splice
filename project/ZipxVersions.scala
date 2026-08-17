@@ -16,8 +16,8 @@ object MyVersions extends ZipxVersions:
   val scalajsIr: Lib     = Lib("org.scala-js", "scalajs-ir", "1.22.0")
   val scalajsLinker: Lib = scalajsIr.mod("scalajs-linker-interface")
 
-  // Same artifact Scala.js 1.22's scalajs-linker pins. Do not let zipxDepUpdate drift this casually.
-  val closure: Lib = Lib("com.google.javascript", "closure-compiler", "v20220202").java
+  // Our post-link pin, not Scala.js's. scalajs-linker still declares v20220202; this evicts it.
+  val closure: Lib = Lib("com.google.javascript", "closure-compiler", "v20260726").java
 
   val compress: Lib = Lib("org.apache.commons", "commons-compress", "1.28.0").java
 
@@ -38,7 +38,6 @@ object MyVersions extends ZipxVersions:
 
   val scalafmt: Plugin       = Plugin("org.scalameta", "sbt-scalafmt", "2.6.2")
   val dynverCi: Plugin       = Plugin("rocks.earlyeffect", "sbt-dynver-ci", "0.2.2")
-  val pgp: Plugin            = Plugin("com.github.sbt", "sbt-pgp", "2.3.1")
   val specularPlugin: Plugin = Plugin("rocks.earlyeffect", "sbt-specular", "0.12.1")
   val chekhovPlugin: Plugin  = Plugin("rocks.earlyeffect", "sbt-chekhov", "0.0.3")
 

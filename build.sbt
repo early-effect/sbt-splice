@@ -32,7 +32,6 @@ publishTo := {
 // CI-only publishing: key hex from PGP_KEY_HEX (org secret). Sentinel keeps local loads working.
 usePgpKeyHex(sys.env.getOrElse("PGP_KEY_HEX", "MISSING_KEY_HEX"))
 
-val Fmt    = CapabilityName("fmt")
 val scalac = Seq("-deprecation", "-feature", "-Wunused:all")
 
 val pluginSettings = Seq(
@@ -46,8 +45,6 @@ val pluginSettings = Seq(
 
 zipxJavaVersion      := JdkVersion("25")
 zipxWorkflowDispatch := true
-zipxScalaSteward     := true
-zipxCapabilities += zipxTasks.once(Fmt, scalafmtCheckAll)
 zipxCapabilities += ZipxCentral.release
 zipxCapabilities += ZipxDocs.pages()
 zipxEnv := Map(
@@ -84,7 +81,7 @@ lazy val spliceZipx = project
   .settings(
     name        := "sbt-splice-zipx",
     description := "Opt-in zipx pin feed for sbt-splice library pins",
-    addSbtPlugin("rocks.earlyeffect" % "sbt-zipx" % "0.6.2"),
+    addSbtPlugin("rocks.earlyeffect" % "sbt-zipx" % "0.7.1"),
   )
   .settings(pluginSettings)
   .settings(MyVersions.spliceZipx)
@@ -153,7 +150,6 @@ zipxCapabilities += Capability
       plugin / scripted,
       spliceZipx / scripted,
     ),
-    needsCapabilities = List(Fmt),
   )
   .withNodeVersion(NodeVersion("24"))
 

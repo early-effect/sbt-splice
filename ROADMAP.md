@@ -1,8 +1,8 @@
 # sbt-splice
 
-An sbt 2 / Scala 3 plugin (`rocks.earlyeffect` % `sbt-splice`) that remaps `@JSImport` in IR, private-links, and wraps pinned vendor JS onto `globalThis.__splice_*` so the browser can load the result. Zero Node: never invoke npm, npx, node, or read a `package.json`. JS libraries arrive as **pinned bytes**: a vendored file, a Maven/WebJar coordinate, or a fetch from a CDN / trusted repo that downloads the `.js` and nothing else.
+An sbt 2 / Scala 3 plugin (`rocks.earlyeffect` % `sbt-splice`) that private-links Scala.js IR (remapping `@JSImport` to `Global(__splice_*)` when you have mapped libraries), wraps pinned vendor JS onto those globals, and writes a browser-loadable script. Zero Node: never invoke npm, npx, node, or read a `package.json`. JS libraries, when used, arrive as **pinned bytes**: a vendored file, a Maven/WebJar coordinate, or a fetch from a CDN / trusted repo that downloads the `.js` and nothing else.
 
-This is a **general-purpose** Scala.js tool. Any project that uses `@JSImport("some-lib")` (or CommonJS `require`) and does not want npm in the build is in scope: one library or several, ESM or CJS files, mapped specifier to path. It is not a Preact plugin, not an ascent plugin, and not a Specular plugin.
+This is a **general-purpose** Scala.js tool. Mapped `@JSImport("some-lib")` (or CommonJS `require`) without npm is in scope. So is a Scala-only client with empty `spliceLibs`: `spliceFull` is the Node-free production bundle. It is not a Preact plugin, not an ascent plugin, and not a Specular plugin.
 
 First consumers happen to be in this org:
 
@@ -52,7 +52,7 @@ Write the interesting logic in ZIO. Do not dump a procedural script into `build.
 
 ## 1. Goal and non-goals
 
-**Goal.** Mapped `@JSImport` becomes `Global(__splice_*)` in IR. splice private-links that IR, wraps pinned vendor files onto those globals, and emits a browser-loadable artifact. Development (`spliceFast`) is seconds and readable enough. Production (`spliceFull`) is small and efficient. The output is suitable as a Specular `assets/client.js` or any other static `<script>` the consumer already serves.
+**Goal.** splice private-links Scala.js IR and emits a browser-loadable artifact. Mapped `@JSImport` becomes `Global(__splice_*)` in IR; pinned vendor files wrap onto those globals. Empty `spliceLibs` is valid: there is nothing to wrap, and `spliceFull` is still the production file. Development (`spliceFast`) is seconds and readable enough. Production (`spliceFull`) is small and efficient. The output is suitable as a Specular `assets/client.js` or any other static `<script>` the consumer already serves.
 
 **Non-goals.**
 
@@ -66,9 +66,10 @@ Write the interesting logic in ZIO. Do not dump a procedural script into `build.
 ## 2. Constraints
 
 - **sbt 2 + Scala 3.8, early-semver.** Same publish identity as sbt-zipx / sbt-specular: `organization := "rocks.earlyeffect"`, `organizationName := "Early Effect"`, `versionScheme := Some("early-semver")`, zipx-generated CI (`ZipxCentral.release`, `ZipxDocs.pages`), `usePgpKeyHex(sys.env.getOrElse("PGP_KEY_HEX", "MISSING_KEY_HEX"))`. Publishing is CI-only. No hand-written `release.yml`.
+- **JDK 21+ to run `spliceFull`.** Our Closure pin (`v20260726`) requires Java 21. This repo's zipx image is JDK 25. `spliceFast` does not run Closure.
 - **Zero Node.** The plugin and its tests never spawn Node. Scripted tests must pass with Node absent from `PATH`. No jsdom, no Playwright, no `node_modules` in this repo.
 - **Sealed JS.** Every spliced byte is pinned: a file in the repo, a Maven/WebJar checksum, or a CDN fetch with a content hash. Fail loud on unresolved specifiers. Never leave `import "foo"` in the output. Never run anything obtained from the fetch.
-- **Do not invent a minifier.** Reuse Scala.js for the Scala graph. For spliced libraries, use the same Closure Compiler JAR Scala.js uses. Details in §4.
+- **Do not invent a minifier.** Reuse Scala.js minify for the Scala graph. The follow-up JS minifier is our Closure Compiler JAR (`com.google.javascript` % `closure-compiler`, pin in `ZipxVersions`). Details in §4.
 
 ## 3. Architecture
 
@@ -156,7 +157,7 @@ Built-in resolvers expand to GET-able URLs. Defaults we should ship because they
 
 ## 4. Optimization design
 
-Two different tools, two different jobs. Closure is the production minifier for **spliced** JS. It is not a substitute for the Scala.js linker, and the linker is not a substitute for minifying vendor files.
+Two different tools, two different jobs. Scala.js minify shrinks the Scala graph. Closure is the production minifier for the **printed** spliced file (vendor wrappers plus that minify output). It is not a substitute for the Scala.js linker, and the linker is not a substitute for minifying vendor files.
 
 | Task | On top of | Intent |
 |---|---|---|
@@ -172,7 +173,7 @@ Two different tools, two different jobs. Closure is the production minifier for 
 | Linker (`fastLinkJS` / `fullLinkJS`) | `.sjsir` only | splice calls `Linker.link` on remapped IR into a private directory. Vanilla linker tasks stay unchanged. Extra JS still cannot enter the linker. |
 | IR optimizer | Scala.js IR | Comes with the link. Leave it on. |
 | Minify (Scala.js 1.16+, on in `fullLinkJS`) | Property names of **Scala classes**, using types and Scala.js semantics | Keep on. This is the production shrink of the Scala graph, including under `ModuleKind.ESModule`. |
-| Closure backend (`ClosureLinkerBackend`) | Emitter trees of the Scala graph, one module, **not** `ESModule` | Do not rely on this for spliced JS. Deprecated and off by default as of Scala.js 1.21 (`withClosureCompiler(true)` still works, for now). |
+| Closure backend (`ClosureLinkerBackend`) | Emitter trees of the Scala graph, one module, **not** `ESModule` | Do not rely on this. Deprecated and off by default as of Scala.js 1.21. Our newer Closure JAR evicts `scalajs-linker`'s `v20220202`, so `withClosureCompiler(true)` may not load while splice is on the classpath. Unsupported if it breaks. |
 
 ### Extra JS cannot enter the linker
 
@@ -180,28 +181,30 @@ The public `Linker.link` takes `Seq[IRFile]`, module initializers, an output dir
 
 `jsHeader` is prepended text, not a library input. `ClosureLinkerBackend.buildChunk` transforms Scala.js emitter trees into one `JSChunk` and requires `moduleKind != ESModule` and `modules.size <= 1`. Wrapping a `.js` file as IR is not a supported path.
 
-So extra JS cannot be fed into the Scala.js linker as additional inputs. Closure inside `fullLinkJS` never sees spliced files. The production plan is a **post-link Closure pass** on the spliced file, using the same compiler JAR Scala.js already depends on: `com.google.javascript % closure-compiler` (Scala.js 1.21 still pins `v20220202` from `scalajs-linker`). We invoke that JAR ourselves. We do not fork `ClosureLinkerBackend`. When Scala.js removes Closure from the linker, splice's post-link pass stays.
+So extra JS cannot be fed into the Scala.js linker as additional inputs. Linker GCC, even if someone re-enabled it, never sees spliced files. The production path is a **post-link Closure pass** on the spliced file. We invoke `com.google.javascript` % `closure-compiler` ourselves. The pin is **ours** (`v20260726` in `ZipxVersions`), not Scala.js's. We do not fork `ClosureLinkerBackend`. When Scala.js removes Closure from the linker, splice's post-link pass stays.
 
-Scala.js 1.16's own guidance is that minify plus a general-purpose JS minifier gets within about 15% of historical Closure-on-Scala. Scala.js 1.21's guidance is to follow `fullLinkJS` with a JS minifier (they suggest Vite / Rolldown). Splice's constraint is no Node, so that follow-up is a JVM minifier.
+Scala.js 1.21's guidance is to follow `fullLinkJS` with a JavaScript minifier (they suggest Vite / Rolldown). Splice's constraint is no Node, so that follow-up is JVM Closure. Minify plus a general minifier is the pipeline; we already ran minify in the private full link.
+
+Post-link Closure **parses** printed minify JS. That is a different input than Scala.js GCC, which consumed emitter trees. Scala.js encodes a real `_` in a Java name as U+FF3F; the minify printer emits `\uff3f` in identifiers. Closure still rejects U+FF3F ([closure-compiler#2851](https://github.com/google/closure-compiler/issues/2851)). Before compile we rewrite `\uff3f` / `\uFF3F` / U+FF3F to `$uFF3F`. Advanced mode then renames the identifier.
+
+Host free-vars: Scala.js `js.Dynamic.global.onmessage = ...` (MacrotaskExecutor, workers) is a free assignment. Builtin Window externs treat those names as properties. `BrowserExterns` declares them as `var`s. Do not silence `UNDEFINED_VARIABLES`; that would let Closure rename `onmessage`.
+
+`spliceFull` needs JDK 21+ (current Closure's floor).
 
 ### ESModule limitation (load-bearing)
 
 From the [Scala.js module docs](https://www.scala-js.org/doc/project/module.html): when using ECMAScript modules, `fullLinkJS` optimizations are limited because Closure cannot be used with them. The backend hard-fails: `Cannot use module kind ESModule with the Closure Compiler`. Issue [#3893](https://github.com/scala-js/scala-js/issues/3893) is closed won't-fix; Closure was deprecated in all configs in 1.21 ([#5244](https://github.com/scala-js/scala-js/issues/5244), shipped in [1.21.0](https://www.scala-js.org/news/2026/04/04/announcing-scalajs-1.21.0/)).
 
-`@JSImport("foo")` requires `ModuleKind.ESModule` or `CommonJSModule`. The linker refuses `@JSImport` under `NoModule` unless the facade has a `globalFallback`. That is the usual pattern for Scala.js facades of npm libraries. `NoModule` is therefore not a viable default for splice consumers that use `@JSImport`.
+`@JSImport("foo")` requires `ModuleKind.ESModule` or `CommonJSModule`. The linker refuses `@JSImport` under `NoModule` unless the facade has a `globalFallback`. That is the usual pattern for Scala.js facades of npm libraries. `NoModule` is the natural kind for Scala-only apps (empty `spliceLibs`). It is not a viable default for splice consumers that use `@JSImport`.
 
-### Options and default
+### Default
 
-1. Link Scala.js as `NoModule` or CommonJS so `fullLinkJS` Closure-compiles the Scala graph, then splice vendored JS in, then optionally Closure the combined file with externs so each library's API survives advanced mode.
-2. Splice first into one script, then run Closure on the whole program (need externs or annotations for the **host**, not for each library's internals).
-3. Keep ESModule for fast; for full, emit a single Closure-optimized script.
+Private full link (Scala.js minify on) plus our post-link Closure pass on one compilation unit. Emit a classic script, not an ES module.
 
-**Default: 3, implemented as 2.**
+- **`spliceFast`:** private remapped link with the consumer's module kind (`ESModule` when `@JSImport` is in play; `NoModule` is fine for Scala-only). Wrap vendor files if any. No Closure. Readable, seconds.
+- **`spliceFull`:** the same with the full-opt linker, then Closure advanced. Empty `spliceLibs` still runs that pass.
 
-- **`spliceFast`:** private remapped link with the consumer's module kind (typically ESModule, required for `@JSImport`). Wrap vendor files. No Closure. Readable, seconds.
-- **`spliceFull`:** private remapped link with the full-opt linker (Scala.js minify already on). Wrap vendor files into one script, then Closure advanced on that file as a **single compilation unit**. Emit a script, not an ES module, because Closure cannot consume ES modules the way Scala.js needs.
-
-Option 1 is the weaker production path. Extra JS cannot enter the linker, so linker Closure (even if re-enabled on CommonJS) never sees spliced files. Concatenating after a Scala-only Closure pass leaves vendor JS unminified unless you Closure again. `NoModule` also cannot express `@JSImport`. One post-link pass on the spliced program is the honest path. Re-enable linker Closure only if a measured size win remains *after* the post-link pass; it is not the default.
+Do not re-enable linker GCC as a production path. Extra JS cannot enter the linker; our JAR may evict the one `ClosureLinkerBackend` was compiled against.
 
 Terser, esbuild, swc, and Rolldown all imply Node or a native binary we will not add. Concatenating unminified vendor files onto `fullLinkJS` output is not enough.
 
@@ -211,7 +214,7 @@ After splice, there are no bare specifiers. Scala.js call sites and every mapped
 
 Feed each spliced file to Closure as **inputs**, not externs. Unused exports can be dropped. Used names are renamed together with the Scala.js call sites.
 
-Externs are for the **browser host** and for names Scala.js already protects (`constructor`, `toString`, `$classData`, `length`, `call`, `apply`, `NaN`, `Infinity`, `undefined`; DOM globals). Mirror the spirit of `ClosureLinkerBackend.ScalaJSExterns`. Do not extern a library's public API unless something *outside* the spliced file must call it by a stable name (an HTML inline script). Typical `@JSImport` consumers do not need that.
+Externs are for the **browser host** and for names Scala.js already protects (`constructor`, `toString`, `$classData`, `length`, `call`, `apply`, `NaN`, `Infinity`, `undefined`; DOM globals). Mirror the spirit of `ClosureLinkerBackend.ScalaJSExterns`. `BrowserExterns` also declares host **free-vars** (`onmessage`, `attachEvent`, `postMessage`, …) that `js.Dynamic.global` compiles to; Window externs only have those as properties. Do not extern a library's public API unless something *outside* the spliced file must call it by a stable name (an HTML inline script). Typical `@JSImport` consumers do not need that.
 
 If a spliced library is written in a style advanced mode will miscompile, fail the task with the Closure error. Do not silently fall back to concat. Escape hatch: mark a specifier as `extern` (include as a file, don't let Closure rename it) and optionally a conservative Closure `SIMPLE` / whitespace pass on that chunk. That is a last resort and it will miss the size budget. Size budget in Phase 3 decides whether advanced-on-combined is viable; if a real library's shape is too hostile, document the fallback in that PR rather than baking it in now.
 
@@ -246,7 +249,7 @@ Checkable:
 - [x] sbt 2.x only (`project/build.properties`), Scala 3.8 only, `SbtPlugin`. No sbt 1 / Scala 2 cross.
 - [x] `organization := "rocks.earlyeffect"`, `organizationName := "Early Effect"`, Apache-2.0, `versionScheme := Some("early-semver")`
 - [x] `homepage` / `scmInfo` point at `github.com/early-effect/sbt-splice`
-- [x] zipx: latest `sbt-zipx` from Central, `zipxJavaVersion := JdkVersion("25")`, fmt `once` + verify (`testFull` and `scripted`), `ZipxCentral.release`, `ZipxDocs.pages`
+- [x] zipx: latest `sbt-zipx` from Central, `zipxJavaVersion := JdkVersion("25")`, parallel Verify (`fmt` / `workflow-check` / `advisories` / `test` with `testFull` and `scripted`), `ZipxCentral.release`, `ZipxDocs.pages`
 - [x] Specular docs module (plugin artifact kind), theme like other early-effect plugins
 - [x] ZIO core + zio-test; AutoPlugin is a thin wrapper. At least one zio-test suite in Phase 0 (even if it only asserts the empty program's shape)
 - [x] `usePgpKeyHex(sys.env.getOrElse("PGP_KEY_HEX", "MISSING_KEY_HEX"))`, `publishTo` Central Portal (`localStaging` / snapshots)
@@ -289,7 +292,9 @@ Vendor files from Phase 1 stay the zero-network path. Remotes are opt-in via res
 Checkable:
 
 - [x] `spliceFull` depends on `fullLinkJS` (minify on)
-- [x] After splice, run Closure advanced on the combined file via `com.google.javascript % closure-compiler` (same artifact Scala.js uses; version pinned in the plugin, documented if it diverges from Scala.js)
+- [x] After splice, run Closure advanced on the combined file via `com.google.javascript % closure-compiler` (version pinned in the plugin)
+
+The Closure JAR later diverged from Scala.js (`v20260726`; see §4 and §7).
 - [x] Default full artifact is one script
 - [x] Each spliced file is a Closure input; browser/Scala.js names are externs
 - [x] Size budget: output strictly smaller than unminified concat of the same `fullLinkJS` plus the same vendor file(s); numbers asserted in scripted
@@ -381,8 +386,7 @@ splice is not.
 - **Published ESM.** Real packages often put `export{x as h, ...}` on the same
   line as the bundle. `JsModules.rewriteExports` must handle that; leftover
   detection uses `leftoverExports`.
-- **Closure.** JAR is `v20220202`, matching Scala.js 1.22. Extra linker Closure
-  is not the default. Fail the task on Closure errors.
+- **Closure.** JAR is `v20260726` (our pin in `ZipxVersions`, not Scala.js 1.22's `v20220202`). JDK 21+ to run `spliceFull`. Rewrite `\uff3f` / U+FF3F to `$uFF3F` before parse. Host free-vars in `BrowserExterns`. Fail the task on Closure errors. Linker GCC is not ours and may not load after eviction.
 - **Allowlist.** `spliceResolvers` is the URL allowlist. A company adds an
   internal Maven repo of WebJars and drops public CDNs.
 - **IR remap.** Mapped `@JSImport` becomes `Global(__splice_*)` in IR. splice
@@ -410,9 +414,10 @@ splice is not.
 - **`spliceFast` directory emit.** Implementation leftover, not a product
   question. Needed before ascent should turn on `SmallModulesFor`. Fail-loud
   on multi-file linker output can ship first.
-- **JS pin feed.** Opt-in `sbt-splice-zipx`, not a splice core feature. It
-  registers a zipx pin feed from `spliceLibs` (CDN/GitHub rewrite version plus
-  sha256; WebJar advisory-only; vendor files skipped). See the docs page
+- **JS pin feed.** Opt-in `sbt-splice-zipx`, not a splice core feature. Catalog
+  `Pin("splice", …)` vals are inventory; lookup fills version plus sha256; zipx
+  rewrites those constructors; `materialize` keeps matching `spliceLibs` in
+  sync. WebJar advisory-only; vendor files skipped. See the docs page
   "Keeping library pins current."
 
 ## 8. Sharp edges (this plugin)
@@ -437,6 +442,9 @@ rule.
 - Chekhov e2e is Firefox-only with a scoped `chekhovInstall` until
   [chekhov#24](https://github.com/early-effect/chekhov/issues/24) (aggregated
   install races apt across browsers).
+- Closure pin is ours (`v20260726`) and evicts `scalajs-linker`'s `v20220202`.
+  `spliceFull` needs JDK 21+. Do not feed minify output to Closure without the
+  `\uff3f` rewrite.
 
 ## Prior art (none of these is splice)
 

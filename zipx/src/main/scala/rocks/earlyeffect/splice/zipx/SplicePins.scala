@@ -12,15 +12,27 @@ import java.nio.file.{Files, Path}
 import java.time.Duration
 import scala.concurrent.ExecutionContext
 
-/** Inventory, lookup, and apply for the splice pin feed. zipx owns Ignore/Report/Update; this object owns JS pins. */
+/** Lookup and materialize for the splice pin feed. Inventory is catalog `Pin` vals; zipx rewrites those constructors.
+  * `materialize` keeps matching `spliceLibs` version and sha256 in sync.
+  */
 object SplicePins:
 
   val FeedName: PinFeedName = PinFeedName("splice")
 
   type ResolveSha = (SpliceLib, String) => Either[String, String]
 
-  def constLookup(to: String): PinLookup = _ => Right(Some(to))
-  def constSha(hex: String): ResolveSha  = (_, _) => Right(hex)
+  def constLookup(to: String, sha256: String = "", purl: String = ""): PinLookup = _ =>
+    Right(
+      Some(
+        PinCandidate(
+          to,
+          Option.when(sha256.nonEmpty)(sha256),
+          Purl.make(purl).toOption,
+        )
+      )
+    )
+
+  def constSha(hex: String): ResolveSha = (_, _) => Right(hex)
 
   /** npm when both sides parse as semver, otherwise exact (GitHub tags that are not x.y.z). */
   val classify: VersionStrategy = new VersionStrategy:
@@ -29,8 +41,10 @@ object SplicePins:
       if npm != BumpKind.None then npm else VersionStrategy.exact.classify(current, candidate)
     def latestStable(candidates: List[String]): Option[String] =
       VersionStrategy.npm.latestStable(candidates).orElse(VersionStrategy.exact.latestStable(candidates))
+    def isPreRelease(version: String): Boolean =
+      VersionStrategy.npm.isPreRelease(version)
 
-  def inventory(libs: Seq[SpliceLib]): List[PinnedDep] =
+  def inventory(libs: Seq[SpliceLib]): List[Pin] =
     libs.flatMap(toPin).distinctBy(_.id).toList
 
   def feed(
@@ -39,26 +53,23 @@ object SplicePins:
       lookup: PinLookup,
       resolveSha: ResolveSha,
   ): Seq[PinFeed] =
-    val pins    = inventory(libs)
     val webjars = libs.collect { case w: SpliceLib.WebJar => w.specifier }.toSet
-    if pins.isEmpty then Nil
-    else
-      List(
-        PinFeed(
-          name = FeedName,
-          inventory = pins,
-          classify = classify,
-          lookup = pin => if webjars.contains(pin.id) then Right(None) else lookup(pin),
-          apply = applyPin(libs, base, webjars, resolveSha),
-        )
+    List(
+      PinFeed(
+        name = FeedName,
+        classify = classify,
+        lookup = pin =>
+          if webjars.contains(pin.id) then Right(None)
+          else enrich(pin, libs, lookup, resolveSha),
+        materialize = materializePin(libs, base, webjars),
       )
-    end if
+    )
   end feed
 
   def lookupDefault: PinLookup = pin =>
     pin.purl.map(p => p: String) match
-      case Some(s) if s.startsWith("pkg:npm/")    => lookupNpm(npmName(s))
-      case Some(s) if s.startsWith("pkg:github/") => lookupGithub(githubRepo(s))
+      case Some(s) if s.startsWith("pkg:npm/")    => lookupNpm(npmName(s)).map(_.map(v => PinCandidate(v)))
+      case Some(s) if s.startsWith("pkg:github/") => lookupGithub(githubRepo(s)).map(_.map(v => PinCandidate(v)))
       case _                                      => Right(None)
 
   def resolveShaDefault(cacheDir: Path): ResolveSha = (lib, to) =>
@@ -102,32 +113,73 @@ object SplicePins:
             Right(())
         end if
 
-  private def applyPin(
+  private def enrich(
+      pin: Pin,
+      libs: Seq[SpliceLib],
+      lookup: PinLookup,
+      resolveSha: ResolveSha,
+  ): Either[String, Option[PinCandidate]] =
+    lookup(pin).flatMap {
+      case None    => Right(None)
+      case Some(c) =>
+        val lib = libs.find(_.specifier == pin.id)
+        val sha = c.sha256 match
+          case some @ Some(_) => Right(some)
+          case None           =>
+            lib match
+              case Some(l) => resolveSha(l, c.version).map(Some(_))
+              case None    => Right(None)
+        sha.map { hex =>
+          Some(
+            c.copy(
+              sha256 = hex,
+              purl = c.purl.orElse(bumpedPurl(pin, c.version)),
+            )
+          )
+        }
+    }
+
+  private def materializePin(
       libs: Seq[SpliceLib],
       base: java.io.File,
       webjars: Set[String],
-      resolveSha: ResolveSha,
-  ): PinApply = (pin, to) =>
+  ): PinMaterialize = (pin, candidate) =>
     if webjars.contains(pin.id) then Right(())
     else
+      val to = candidate.version
       libs.find(_.specifier == pin.id) match
-        case None                    => Left(s"splice pin '${pin.id}' is not in spliceLibs")
+        case None                    => Right(())
         case Some(_: SpliceLib.File) => Right(())
         case Some(c: SpliceLib.Cdn)  =>
-          resolveSha(c, to).flatMap(sha => rewrite(base, c.version, to, c.sha256, sha))
+          shaOf(candidate).flatMap(sha => rewrite(base, c.version, to, c.sha256, sha))
         case Some(g: SpliceLib.GitHub) =>
-          resolveSha(g, to).flatMap(sha => rewrite(base, g.tag, to, g.sha256, sha))
+          shaOf(candidate).flatMap(sha => rewrite(base, g.tag, to, g.sha256, sha))
         case Some(_: SpliceLib.WebJar) => Right(())
 
-  private def toPin(lib: SpliceLib): Option[PinnedDep] =
+  private def shaOf(candidate: PinCandidate): Either[String, String] =
+    candidate.sha256.map(_.trim.toLowerCase).filter(_.nonEmpty) match
+      case Some(hex) => Right(hex)
+      case None      => Left("splice pin apply: missing sha256; version and hash must move together")
+
+  private def toPin(lib: SpliceLib): Option[Pin] =
     lib match
       case _: SpliceLib.File => None
       case c: SpliceLib.Cdn  =>
-        Some(PinnedDep(c.specifier, c.version, npmPurl(c.name, c.version)))
+        depVersion(c.version).map(ver => Pin(FeedName, c.specifier, ver, c.sha256, npmPurl(c.name, c.version)))
       case w: SpliceLib.WebJar =>
-        Some(PinnedDep(w.specifier, w.version, npmPurl(w.name, w.version)))
+        depVersion(w.version).map(ver => Pin(FeedName, w.specifier, ver, None, npmPurl(w.name, w.version)))
       case g: SpliceLib.GitHub =>
-        Some(PinnedDep(g.specifier, g.tag, githubPurl(g.repository, g.tag)))
+        depVersion(g.tag).map(ver => Pin(FeedName, g.specifier, ver, g.sha256, githubPurl(g.repository, g.tag)))
+
+  private def depVersion(s: String): Option[DepVersion] =
+    DepVersion.make(s).toOption
+
+  private def bumpedPurl(pin: Pin, to: String): Option[Purl] =
+    pin.purl.flatMap { p =>
+      val s   = p: String
+      val cut = s.lastIndexOf('@')
+      if cut < 0 then Some(p) else Purl.make(s"${s.substring(0, cut)}@$to").toOption
+    }
 
   private def npmPurl(name: String, version: String): Option[Purl] =
     val encoded = if name.startsWith("@") then s"%40${name.drop(1)}" else name
