@@ -414,9 +414,10 @@ splice is not.
 - **`spliceFast` directory emit.** Implementation leftover, not a product
   question. Needed before ascent should turn on `SmallModulesFor`. Fail-loud
   on multi-file linker output can ship first.
-- **JS pin feed.** Opt-in `sbt-splice-zipx`, not a splice core feature. It
-  registers a zipx pin feed from `spliceLibs` (CDN/GitHub rewrite version plus
-  sha256; WebJar advisory-only; vendor files skipped). See the docs page
+- **JS pin feed.** Opt-in `sbt-splice-zipx`, not a splice core feature. Catalog
+  `Pin("splice", …)` vals are inventory; lookup fills version plus sha256; zipx
+  rewrites those constructors; `materialize` keeps matching `spliceLibs` in
+  sync. WebJar advisory-only; vendor files skipped. See the docs page
   "Keeping library pins current."
 
 ## 8. Sharp edges (this plugin)

@@ -31,13 +31,13 @@ object SplicePinsSpec extends ZIOSpecDefault:
           byId("htm").purl.contains(Purl("pkg:npm/htm@3.1.4")),
         )
       },
-      test("no feed when every library is a vendor file") {
+      test("feed is registered even when every library is a vendor file") {
         val file = Splice.file("foo", new java.io.File("vendor/foo.js"))
         val got  =
           SplicePins.feed(Seq(file), new java.io.File("."), SplicePins.constLookup("9"), SplicePins.constSha("x"))
-        assertTrue(got.isEmpty)
+        assertTrue(got.nonEmpty, got.head.name == SplicePins.FeedName)
       },
-      test("apply rewrites a unique version and sha256 together") {
+      test("materialize rewrites a unique version and sha256 together") {
         val dir = Files.createTempDirectory("splice-pins")
         val src = dir.resolve("build.sbt")
         write(
@@ -48,6 +48,7 @@ object SplicePinsSpec extends ZIOSpecDefault:
         val lib = Splice
           .lib("foo", "1.0.0", "foo.js")
           .sha256("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+        val pin  = SplicePins.inventory(Seq(lib)).head
         val feed = SplicePins
           .feed(
             Seq(lib),
@@ -56,8 +57,11 @@ object SplicePinsSpec extends ZIOSpecDefault:
             SplicePins.constSha("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"),
           )
           .head
-        val applied = feed.apply(feed.inventory.head, "1.0.1")
-        val text    = Files.readString(src)
+        val applied = feed.materialize(
+          pin,
+          PinCandidate("1.0.1", Some("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")),
+        )
+        val text = Files.readString(src)
         assertTrue(
           applied.isRight,
           text.contains("""Splice.lib("foo", "1.0.1", "foo.js")"""),
@@ -65,7 +69,7 @@ object SplicePinsSpec extends ZIOSpecDefault:
           !text.contains("1.0.0"),
         )
       },
-      test("apply fails when the version string is not unique") {
+      test("materialize fails when the version string is not unique") {
         val dir = Files.createTempDirectory("splice-pins-dup")
         write(
           dir.resolve("build.sbt"),
@@ -76,13 +80,14 @@ spliceLibs += Splice.lib("bar", "1.0.0", "bar.js").sha256("ccccccccccccccccccccc
         val lib = Splice
           .lib("foo", "1.0.0", "foo.js")
           .sha256("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+        val pin  = SplicePins.inventory(Seq(lib)).head
         val feed = SplicePins
           .feed(Seq(lib), dir.toFile, SplicePins.constLookup("1.0.1"), SplicePins.constSha("bb"))
           .head
-        val applied = feed.apply(feed.inventory.head, "1.0.1")
+        val applied = feed.materialize(pin, PinCandidate("1.0.1", Some("bb")))
         assertTrue(applied.left.exists(_.contains("not unique")))
       },
-      test("apply skips a WebJar rewrite") {
+      test("materialize skips a WebJar rewrite") {
         val dir = Files.createTempDirectory("splice-pins-webjar")
         val src = dir.resolve("build.sbt")
         write(
@@ -91,15 +96,17 @@ spliceLibs += Splice.lib("bar", "1.0.0", "bar.js").sha256("ccccccccccccccccccccc
 """,
         )
         val before = Files.readString(src)
+        val lib    = Splice.webjar("htm", "3.1.4", "dist/htm.module.js")
+        val pin    = SplicePins.inventory(Seq(lib)).head
         val feed   = SplicePins
           .feed(
-            Seq(Splice.webjar("htm", "3.1.4", "dist/htm.module.js")),
+            Seq(lib),
             dir.toFile,
             SplicePins.constLookup("3.1.5"),
             SplicePins.constSha("nope"),
           )
           .head
-        val applied = feed.apply(feed.inventory.head, "3.1.5")
+        val applied = feed.materialize(pin, PinCandidate("3.1.5", Some("nope")))
         assertTrue(applied.isRight, Files.readString(src) == before)
       },
       test("classify uses npm for semver and exact otherwise") {

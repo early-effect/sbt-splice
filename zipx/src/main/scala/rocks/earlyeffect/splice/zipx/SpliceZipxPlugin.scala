@@ -7,10 +7,12 @@ import sbt.Keys.*
 import zipx.plugin.ZipxPlugin
 import zipx.plugin.ZipxPlugin.autoImport.*
 
-/** Opt-in zipx integration: emit splice plugin lines and register a pin feed from `spliceLibs`.
+/** Opt-in zipx integration: emit splice plugin lines and register the `splice` pin feed.
   *
-  * Enable by adding this plugin. It requires both sbt-splice and sbt-zipx; `allRequirements` turns it on when those are
-  * already on the classpath. sbt-splice itself does not depend on zipx.
+  * Inventory is catalog `Pin("splice", …)` vals. Lookup fills the next version and sha256; zipx rewrites those
+  * constructors; `materialize` keeps matching `spliceLibs` in sync. Enable by adding this plugin. It requires both
+  * sbt-splice and sbt-zipx; `allRequirements` turns it on when those are already on the classpath. sbt-splice itself
+  * does not depend on zipx.
   */
 object SpliceZipxPlugin extends AutoPlugin:
 
