@@ -19,20 +19,31 @@ addSbtPlugin("rocks.earlyeffect" % "sbt-splice" % "<version>")
 ```
 
 Enable Scala.js on the project that links. Splice attaches itself via `allRequirements` once `ScalaJSPlugin` is on
-the classpath.
+the classpath. Use `ModuleKind.ESModule` (or CommonJS) when you have `@JSImport`. Skip that for a Scala-only app;
+`NoModule` is the default.
+"""
+    ),
+    section("Scala-only (no npm imports)")(
+      md"""
+Leave `spliceLibs` empty. `spliceFast` and `spliceFull` still write `target/splice/fast.js` and
+`target/splice/full.js`. `spliceFull` is the Node-free production bundle.
 
 ```scala
 enablePlugins(ScalaJSPlugin)
-scalaJSLinkerConfig ~= { _.withModuleKind(ModuleKind.ESModule) }
+scalaJSUseMainModuleInitializer := true
 ```
+
+Then in sbt: `spliceFull`. `NoModule` is the natural kind here.
 """
     ),
     section("Map one library and run spliceFast")(
       md"""
-Tell splice which bytes the specifier `"preact"` is, then run `spliceFast`. The default output is
-`target/splice/fast.js`. Put that file in a `<script>` tag (or copy it next to your HTML).
+For `@JSImport`, set `ESModule` and tell splice which bytes the specifier `"preact"` is, then run `spliceFast`. The
+default output is `target/splice/fast.js`. Put that file in a `<script>` tag (or copy it next to your HTML).
 
 ```scala
+enablePlugins(ScalaJSPlugin)
+scalaJSLinkerConfig ~= { _.withModuleKind(ModuleKind.ESModule) }
 spliceResolvers += Splice.jsDelivr
 spliceLibs += Splice.lib("preact", "10.26.4", "dist/preact.module.js").sha256("…")
 ```
@@ -71,7 +82,8 @@ CDN and GitHub fetches go through Coursier (the same cache sbt uses for jars). T
 - `spliceFast` writes the development file (`target/splice/fast.js` by default). Source maps are on
   (`spliceFast / spliceSourceMaps`).
 - `spliceFull` writes the production file (`target/splice/full.js`), then runs Closure advanced. Source maps are off
-  by default; set `spliceFull / spliceSourceMaps := true` to ask Closure for a map.
+  by default; set `spliceFull / spliceSourceMaps := true` to ask Closure for a map. Closure needs **JDK 21+**.
+  `spliceFull` runs that pass even when `spliceLibs` is empty.
 
 `.extern` on a `spliceLibs` entry is a Closure hatch: `spliceFast` still includes the library; `spliceFull` does not
 feed that chunk to advanced mode. Vendor files may be ESM, CJS, or UMD. AMD-only `define()`, `export * from`, and

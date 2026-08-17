@@ -15,10 +15,10 @@ object BuildSite extends DocsSite:
     val m = meta
     super.site.copy(
       summaryMarkdown = Some(
-        s"""**sbt-splice** turns `@JSImport("preact")` into one browser-loadable script. Scala.js
-still emits `import "preact"`; a browser cannot resolve that specifier. You map each name
-to pinned bytes (a file, a WebJar, or a CDN/GitHub download with sha256). Then `spliceFast`
-or `spliceFull` writes a file for a `<script>` tag. sbt 2 and Scala 3 only.
+        s"""**sbt-splice** writes one browser-loadable script from a Scala.js project. Map `@JSImport`
+specifiers to pinned bytes (a file, a WebJar, or a CDN/GitHub download with sha256), or leave
+`spliceLibs` empty for a Scala-only client. Then `spliceFast` or `spliceFull` writes a file for a
+`<script>` tag. sbt 2 and Scala 3 only. `spliceFull` needs JDK 21+.
 """
       ),
       installSnippets = Vector(

@@ -55,6 +55,33 @@ object ClosureSpec extends ZIOSpecDefault:
           !got.js.contains("DEAD_CODE_MARKER"),
         )
       },
+      test("rewriteScalaJsNames replaces escape and raw U+FF3F") {
+        val escaped = """$m_Ljava_nio_charset_ISO\uff3f8859\uff3f1$"""
+        val upper   = """$m_Ljava_nio_charset_ISO\uFF3F8859\uFF3F1$"""
+        val raw     =
+          s"$$m_Ljava_nio_charset_ISO${Closure.FullwidthLowLine}8859${Closure.FullwidthLowLine}1$$"
+        val standIn = "$m_Ljava_nio_charset_ISO$uFF3F8859$uFF3F1$"
+        assertTrue(
+          Closure.rewriteScalaJsNames(escaped) == standIn,
+          Closure.rewriteScalaJsNames(upper) == standIn,
+          Closure.rewriteScalaJsNames(raw) == standIn,
+        )
+      },
+      test("optimize accepts Scala.js minify names and keeps host free-vars") {
+        val linker =
+          """function $m_Ljava_nio_charset_ISO\uff3f8859\uff3f1$() { return 1; }
+            |onmessage = function () { return $m_Ljava_nio_charset_ISO\uff3f8859\uff3f1$(); };
+            |attachEvent("onmessage", onmessage);
+            |""".stripMargin
+        for got <- Closure.optimize(List("linker.js" -> linker))
+        yield assertTrue(
+          !got.js.contains("\\uff3f"),
+          !got.js.contains("\\uFF3F"),
+          !got.js.contains(Closure.FullwidthLowLine.toString),
+          got.js.contains("onmessage"),
+          got.js.contains("attachEvent"),
+        )
+      },
       test("prefix chunks are prepended and extra extern names are not minified away") {
         val prefix =
           """const __splice_ext = (() => {

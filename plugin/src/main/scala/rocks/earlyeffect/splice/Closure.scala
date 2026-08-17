@@ -18,12 +18,25 @@ import java.nio.file.{Files, Path}
 import java.security.MessageDigest
 import java.util.ArrayList
 import java.util.logging.Level
+import java.util.regex.Matcher
 import scala.annotation.nowarn
+import scala.util.matching.Regex
 
-/** Post-link Closure advanced pass. Same JAR Scala.js 1.22 pins (`v20220202`). */
+/** Post-link Closure advanced pass. Our pin (`v20260726`), not Scala.js's linker JAR. */
 object Closure:
 
-  val Version: String = "v20220202"
+  val Version: String = "v20260726"
+
+  /** Bump when `rewriteScalaJsNames` changes so `spliceFull` cache invalidates. */
+  private[splice] val RewriteVersion: String = "1"
+
+  /** Scala.js encoding of a real `_` in a Java name (`ISO_8859_1` → `ISO＿8859＿1`). */
+  private[splice] val FullwidthLowLine: Char = '\uFF3F'
+
+  /** ASCII stand-in Closure `v20260726` will lex. Advanced mode then renames the identifier. */
+  private[splice] val FullwidthLowLineStandIn: String = "$uFF3F"
+
+  private val fullwidthEscape: Regex = """\\u[Ff][Ff]3[Ff]""".r
 
   private val lock = new Object
 
@@ -42,13 +55,27 @@ object Closure:
       |var NaN = 0.0/0.0, Infinity = 1.0/0.0, undefined = void 0;
       |""".stripMargin
 
-  /** Host names the spliced program may touch that builtin externs can miss. */
+  /** Host free-vars Scala.js emits from `js.Dynamic.global` (MacrotaskExecutor, workers). */
   private[splice] val BrowserExterns: String =
     """
       |var globalThis;
+      |var onmessage;
+      |var attachEvent;
+      |var addEventListener;
+      |var postMessage;
+      |var importScripts;
+      |var setImmediate;
+      |var setTimeout;
+      |var MessageChannel;
+      |var navigator;
       |""".stripMargin
 
   final case class Compiled(js: String, sourceMap: Option[String] = None)
+
+  /** Rewrite Scala.js minify identifier encoding so Closure can parse it. */
+  private[splice] def rewriteScalaJsNames(js: String): String =
+    val escaped = fullwidthEscape.replaceAllIn(js, Matcher.quoteReplacement(FullwidthLowLineStandIn))
+    escaped.replace(FullwidthLowLine.toString, FullwidthLowLineStandIn)
 
   def optimize(
       inputs: List[(String, String)],
@@ -57,9 +84,10 @@ object Closure:
       sourceMaps: Boolean = false,
       sourceMapFile: String = "out.js",
   ): IO[SpliceError, Compiled] =
-    val prefixJs = prefix.map(_._2).mkString
+    val prefixJs  = prefix.map(_._2).mkString
+    val rewritten = inputs.map((name, code) => name -> rewriteScalaJsNames(code))
     ZIO
-      .attemptBlocking(lock.synchronized(compile(inputs, extraExterns, sourceMaps, sourceMapFile, prefixJs)))
+      .attemptBlocking(lock.synchronized(compile(rewritten, extraExterns, sourceMaps, sourceMapFile, prefixJs)))
       .mapError(e => SpliceError.Io(s"Closure: ${e.getMessage}"))
       .flatMap {
         case Left(err)       => ZIO.fail(err)
@@ -78,6 +106,7 @@ object Closure:
     def add(s: String): Unit =
       md.update(s.getBytes(StandardCharsets.UTF_8))
     add(Version)
+    add(RewriteVersion)
     add(ScalaJSExterns)
     add(BrowserExterns)
     add(output.toAbsolutePath.normalize.toString)
