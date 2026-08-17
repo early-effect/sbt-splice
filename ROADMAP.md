@@ -249,7 +249,7 @@ Checkable:
 - [x] sbt 2.x only (`project/build.properties`), Scala 3.8 only, `SbtPlugin`. No sbt 1 / Scala 2 cross.
 - [x] `organization := "rocks.earlyeffect"`, `organizationName := "Early Effect"`, Apache-2.0, `versionScheme := Some("early-semver")`
 - [x] `homepage` / `scmInfo` point at `github.com/early-effect/sbt-splice`
-- [x] zipx: latest `sbt-zipx` from Central, `zipxJavaVersion := JdkVersion("25")`, fmt `once` + verify (`testFull` and `scripted`), `ZipxCentral.release`, `ZipxDocs.pages`
+- [x] zipx: latest `sbt-zipx` from Central, `zipxJavaVersion := JdkVersion("25")`, parallel Verify (`fmt` / `workflow-check` / `advisories` / `test` with `testFull` and `scripted`), `ZipxCentral.release`, `ZipxDocs.pages`
 - [x] Specular docs module (plugin artifact kind), theme like other early-effect plugins
 - [x] ZIO core + zio-test; AutoPlugin is a thin wrapper. At least one zio-test suite in Phase 0 (even if it only asserts the empty program's shape)
 - [x] `usePgpKeyHex(sys.env.getOrElse("PGP_KEY_HEX", "MISSING_KEY_HEX"))`, `publishTo` Central Portal (`localStaging` / snapshots)

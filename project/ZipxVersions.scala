@@ -38,7 +38,6 @@ object MyVersions extends ZipxVersions:
 
   val scalafmt: Plugin       = Plugin("org.scalameta", "sbt-scalafmt", "2.6.2")
   val dynverCi: Plugin       = Plugin("rocks.earlyeffect", "sbt-dynver-ci", "0.2.2")
-  val pgp: Plugin            = Plugin("com.github.sbt", "sbt-pgp", "2.3.1")
   val specularPlugin: Plugin = Plugin("rocks.earlyeffect", "sbt-specular", "0.12.1")
   val chekhovPlugin: Plugin  = Plugin("rocks.earlyeffect", "sbt-chekhov", "0.0.3")
 
