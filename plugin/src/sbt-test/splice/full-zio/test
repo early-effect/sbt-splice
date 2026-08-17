@@ -1,0 +1,5 @@
+# spliceFull of a ZIO Scala.js app: Node process stub.
+> spliceFull
+$ exists target/splice/full.js
+> es/spliceFull
+$ exists es/target/splice/full.js

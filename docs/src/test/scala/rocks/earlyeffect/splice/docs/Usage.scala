@@ -26,7 +26,9 @@ the classpath. Use `ModuleKind.ESModule` (or CommonJS) when you have `@JSImport`
     section("Scala-only (no npm imports)")(
       md"""
 Leave `spliceLibs` empty. `spliceFast` and `spliceFull` still write `target/splice/fast.js` and
-`target/splice/full.js`. `spliceFull` is the Node-free production bundle.
+`target/splice/full.js`. `spliceFull` is the Node-free production bundle. It stubs Node-shaped
+free-vars (starting with `process`) so isomorphic Scala.js such as ZIO `System.env` / exit works
+without Node.
 
 ```scala
 enablePlugins(ScalaJSPlugin)

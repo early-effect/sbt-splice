@@ -70,6 +70,15 @@ object Closure:
       |var navigator;
       |""".stripMargin
 
+  /** Node-shaped free-vars that are not browser host APIs. Compiler inputs, not externs: a `var process;` extern folds
+    * `typeof process !== "undefined"` to true and leaves host `process.env` / `process.exitCode`, which throw in a
+    * browser. Unknown names still fail Closure; do not grow this from an error dump.
+    */
+  private[splice] val NodeStubs: String =
+    """
+      |var process = { env: {}, exitCode: 0, browser: true };
+      |""".stripMargin
+
   final case class Compiled(js: String, sourceMap: Option[String] = None)
 
   /** Rewrite Scala.js minify identifier encoding so Closure can parse it. */
@@ -109,6 +118,7 @@ object Closure:
     add(RewriteVersion)
     add(ScalaJSExterns)
     add(BrowserExterns)
+    add(NodeStubs)
     add(output.toAbsolutePath.normalize.toString)
     add("extern:" + extern.toList.sorted.mkString(","))
     add("maps:" + sourceMaps)
@@ -167,7 +177,8 @@ object Closure:
       val decls = extraExterns.map(n => s"var $n;").mkString("\n")
       externs.add(SourceFile.fromCode("SpliceLibExterns.js", decls))
 
-    val sources = new ArrayList[SourceFile](inputs.size)
+    val sources = new ArrayList[SourceFile](inputs.size + 1)
+    sources.add(SourceFile.fromCode("SpliceNodeStubs.js", NodeStubs))
     inputs.foreach { (name, code) =>
       sources.add(SourceFile.fromCode(name, code))
     }

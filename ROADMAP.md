@@ -187,7 +187,10 @@ Scala.js 1.21's guidance is to follow `fullLinkJS` with a JavaScript minifier (t
 
 Post-link Closure **parses** printed minify JS. That is a different input than Scala.js GCC, which consumed emitter trees. Scala.js encodes a real `_` in a Java name as U+FF3F; the minify printer emits `\uff3f` in identifiers. Closure still rejects U+FF3F ([closure-compiler#2851](https://github.com/google/closure-compiler/issues/2851)). Before compile we rewrite `\uff3f` / `\uFF3F` / U+FF3F to `$uFF3F`. Advanced mode then renames the identifier.
 
-Host free-vars: Scala.js `js.Dynamic.global.onmessage = ...` (MacrotaskExecutor, workers) is a free assignment. Builtin Window externs treat those names as properties. `BrowserExterns` declares them as `var`s. Do not silence `UNDEFINED_VARIABLES`; that would let Closure rename `onmessage`.
+Host free-vars: Scala.js `js.Dynamic.global.X` is a free variable `X`. Two buckets:
+
+- **Browser host APIs** (`onmessage`, `attachEvent`, `setTimeout`, …). Builtin Window externs treat those names as properties. `BrowserExterns` declares them as `var`s so the output still calls the real host. Do not silence `UNDEFINED_VARIABLES`; that would let Closure rename `onmessage`.
+- **Node-shaped names that are not on the browser host** (`process` today). These are `NodeStubs`: compiler **inputs**, not externs. A `var process;` extern folds `typeof process !== "undefined"` to true and leaves host `process.env` / `process.exitCode`, which throw in a browser. The stub is a small object (`env`, `exitCode`, `browser`); Closure may rename the binding. Unused stubs DCE away. Unknown free-vars still fail. Do not auto-stub Closure errors: a `typeof Buffer !== "undefined"` probe must stay false in the browser.
 
 `spliceFull` needs JDK 21+ (current Closure's floor).
 
@@ -214,7 +217,7 @@ After splice, there are no bare specifiers. Scala.js call sites and every mapped
 
 Feed each spliced file to Closure as **inputs**, not externs. Unused exports can be dropped. Used names are renamed together with the Scala.js call sites.
 
-Externs are for the **browser host** and for names Scala.js already protects (`constructor`, `toString`, `$classData`, `length`, `call`, `apply`, `NaN`, `Infinity`, `undefined`; DOM globals). Mirror the spirit of `ClosureLinkerBackend.ScalaJSExterns`. `BrowserExterns` also declares host **free-vars** (`onmessage`, `attachEvent`, `postMessage`, …) that `js.Dynamic.global` compiles to; Window externs only have those as properties. Do not extern a library's public API unless something *outside* the spliced file must call it by a stable name (an HTML inline script). Typical `@JSImport` consumers do not need that.
+Externs are for the **browser host** and for names Scala.js already protects (`constructor`, `toString`, `$classData`, `length`, `call`, `apply`, `NaN`, `Infinity`, `undefined`; DOM globals). Mirror the spirit of `ClosureLinkerBackend.ScalaJSExterns`. `BrowserExterns` also declares host **free-vars** (`onmessage`, `attachEvent`, `postMessage`, …) that `js.Dynamic.global` compiles to; Window externs only have those as properties. Node-shaped free-vars (`process`) are `NodeStubs` inputs, not externs. Do not extern a library's public API unless something *outside* the spliced file must call it by a stable name (an HTML inline script). Typical `@JSImport` consumers do not need that.
 
 If a spliced library is written in a style advanced mode will miscompile, fail the task with the Closure error. Do not silently fall back to concat. Escape hatch: mark a specifier as `extern` (include as a file, don't let Closure rename it) and optionally a conservative Closure `SIMPLE` / whitespace pass on that chunk. That is a last resort and it will miss the size budget. Size budget in Phase 3 decides whether advanced-on-combined is viable; if a real library's shape is too hostile, document the fallback in that PR rather than baking it in now.
 
@@ -386,7 +389,7 @@ splice is not.
 - **Published ESM.** Real packages often put `export{x as h, ...}` on the same
   line as the bundle. `JsModules.rewriteExports` must handle that; leftover
   detection uses `leftoverExports`.
-- **Closure.** JAR is `v20260726` (our pin in `ZipxVersions`, not Scala.js 1.22's `v20220202`). JDK 21+ to run `spliceFull`. Rewrite `\uff3f` / U+FF3F to `$uFF3F` before parse. Host free-vars in `BrowserExterns`. Fail the task on Closure errors. Linker GCC is not ours and may not load after eviction.
+- **Closure.** JAR is `v20260726` (our pin in `ZipxVersions`, not Scala.js 1.22's `v20220202`). JDK 21+ to run `spliceFull`. Rewrite `\uff3f` / U+FF3F to `$uFF3F` before parse. Host free-vars in `BrowserExterns`; Node-shaped free-vars (`process`) in `NodeStubs` (compiler inputs, not externs). Fail the task on Closure errors. Linker GCC is not ours and may not load after eviction.
 - **Allowlist.** `spliceResolvers` is the URL allowlist. A company adds an
   internal Maven repo of WebJars and drops public CDNs.
 - **IR remap.** Mapped `@JSImport` becomes `Global(__splice_*)` in IR. splice
