@@ -101,6 +101,30 @@ object ClosureSpec extends ZIOSpecDefault:
           got.js.contains("EXTERN_KEEP"),
         )
       },
+      test("optimize stubs process so ZIO-shaped exitCode and env eval without a host process") {
+        val linker =
+          """onmessage = function () {
+            |  process.exitCode = 7;
+            |  var env = (typeof process !== "undefined" && typeof process.env !== "undefined")
+            |    ? process.env : {};
+            |  return String(process.exitCode) + (env.FOO || "none");
+            |};
+            |""".stripMargin
+        for
+          got <- Closure.optimize(List("linker.js" -> linker))
+          ran  = JsHost.evalExpr(got.js, "onmessage()")
+          host = JsHost.evalExpr(got.js, "typeof process")
+        yield assertTrue(ran == "7none", host == "undefined")
+      },
+      test("optimize fails on a free-var that is not a host extern or Node stub") {
+        val linker = "onmessage = function () { notAHostApi.foo = 1; };"
+        for result <- Closure.optimize(List("linker.js" -> linker)).either
+        yield assertTrue(
+          result match
+            case Left(SpliceError.Closure(detail)) => detail.contains("notAHostApi")
+            case _                                 => false
+        )
+      },
     )
 
   private def tempDir: UIO[Path] =
