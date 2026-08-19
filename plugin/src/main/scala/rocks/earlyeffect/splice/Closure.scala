@@ -86,17 +86,38 @@ object Closure:
     val escaped = fullwidthEscape.replaceAllIn(js, Matcher.quoteReplacement(FullwidthLowLineStandIn))
     escaped.replace(FullwidthLowLine.toString, FullwidthLowLineStandIn)
 
+  private[splice] val SimpleProperty: Regex = """^[A-Za-z_$][A-Za-z0-9_$]*$""".r
+
+  /** Property externs so Closure does not rename overridable names (`render` vs a Scala.js `class extends $super`). */
+  private[splice] def propertyExterns(names: Iterable[String]): String =
+    names.iterator.map(_.trim).filter(_.nonEmpty).toList.distinct.sorted.map(propertyExtern).mkString("\n")
+
+  private def propertyExtern(name: String): String =
+    if SimpleProperty.matches(name) then s"Object.prototype.$name;"
+    else s"Object.prototype['${escapeJsString(name)}'];"
+
+  private def escapeJsString(s: String): String =
+    s.flatMap {
+      case '\\' => "\\\\"
+      case '\'' => "\\'"
+      case '\n' => "\\n"
+      case '\r' => "\\r"
+      case c    => c.toString
+    }
+
   def optimize(
       inputs: List[(String, String)],
       prefix: List[(String, String)] = Nil,
       extraExterns: List[String] = Nil,
+      keepProperties: Iterable[String] = Nil,
       sourceMaps: Boolean = false,
       sourceMapFile: String = "out.js",
   ): IO[SpliceError, Compiled] =
     val prefixJs  = prefix.map(_._2).mkString
     val rewritten = inputs.map((name, code) => name -> rewriteScalaJsNames(code))
+    val kept      = propertyExterns(keepProperties)
     ZIO
-      .attemptBlocking(lock.synchronized(compile(rewritten, extraExterns, sourceMaps, sourceMapFile, prefixJs)))
+      .attemptBlocking(lock.synchronized(compile(rewritten, extraExterns, kept, sourceMaps, sourceMapFile, prefixJs)))
       .mapError(e => SpliceError.Io(s"Closure: ${e.getMessage}"))
       .flatMap {
         case Left(err)       => ZIO.fail(err)
@@ -110,6 +131,7 @@ object Closure:
       output: Path,
       extern: Set[String] = Set.empty,
       sourceMaps: Boolean = false,
+      keepProperties: Set[String] = Set.empty,
   ): String =
     val md                   = MessageDigest.getInstance("SHA-256")
     def add(s: String): Unit =
@@ -119,9 +141,11 @@ object Closure:
     add(ScalaJSExterns)
     add(BrowserExterns)
     add(NodeStubs)
+    add(propertyExterns(keepProperties))
     add(output.toAbsolutePath.normalize.toString)
     add("extern:" + extern.toList.sorted.mkString(","))
     add("maps:" + sourceMaps)
+    add("keep:" + keepProperties.toList.sorted.mkString(","))
     linker.sortBy(_.label).foreach { f =>
       add(f.label)
       add(f.contents)
@@ -147,6 +171,7 @@ object Closure:
   private def compile(
       inputs: List[(String, String)],
       extraExterns: List[String],
+      keepExterns: String,
       sourceMaps: Boolean,
       sourceMapFile: String,
       prefixJs: String,
@@ -176,6 +201,7 @@ object Closure:
     if extraExterns.nonEmpty then
       val decls = extraExterns.map(n => s"var $n;").mkString("\n")
       externs.add(SourceFile.fromCode("SpliceLibExterns.js", decls))
+    if keepExterns.nonEmpty then externs.add(SourceFile.fromCode("SpliceKeepProperties.js", keepExterns))
 
     val sources = new ArrayList[SourceFile](inputs.size + 1)
     sources.add(SourceFile.fromCode("SpliceNodeStubs.js", NodeStubs))

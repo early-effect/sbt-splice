@@ -25,9 +25,9 @@ object Resolve:
 
   private def one(lib: SpliceLib, env: ResolveEnv): IO[SpliceError, Path] =
     lib match
-      case SpliceLib.File(spec, file, _) =>
-        val path = file.toPath
-        ZIO.unless(Files.isRegularFile(path))(ZIO.fail(SpliceError.MissingFile(spec, path.toString))).as(path)
+      case f: SpliceLib.File =>
+        val path = f.file.toPath
+        ZIO.unless(Files.isRegularFile(path))(ZIO.fail(SpliceError.MissingFile(f.specifier, path.toString))).as(path)
       case c: SpliceLib.Cdn    => cdn(c, env)
       case w: SpliceLib.WebJar => webjar(w, env)
       case g: SpliceLib.GitHub => github(g, env)

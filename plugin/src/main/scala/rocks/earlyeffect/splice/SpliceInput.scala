@@ -12,5 +12,6 @@ final case class SpliceInput(
     output: Path,
     optimize: Boolean = false,
     extern: Set[String] = Set.empty,
+    keepProperties: Set[String] = Set.empty,
     sourceMaps: Boolean = false,
 )
