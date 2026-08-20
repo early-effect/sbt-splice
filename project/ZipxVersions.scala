@@ -2,7 +2,11 @@ import zipx.*
 
 /** Typed catalog: every library and sbt plugin this build may use. `zipxDepUpdate` rewrites constructors here.
   *
-  * Every `Lib` / `Plugin` val is a catalog row. Each module selects a group (`plugin`, `docs`, `e2e`, `spliceZipx`).
+  * sbt-zipx is not a row: generate emits it from the loaded plugin (`zipxSelfPlugins`). sbt-pgp is not a row: zipx
+  * already brings it in.
+  *
+  * Every `Lib` / `Plugin` / `Action` val is a catalog row. Each module selects a group (`plugin`, `docs`, `e2e`,
+  * `spliceZipx`).
   */
 object MyVersions extends ZipxVersions:
 
@@ -28,10 +32,9 @@ object MyVersions extends ZipxVersions:
   val graalJs: Lib       = Lib("org.graalvm.js", "js-language", "25.2.4").java.test
   val graalTruffle: Lib  = Lib("org.graalvm.truffle", "truffle-runtime", "25.2.4").java.test
 
-  val specular: Lib        = Lib("rocks.earlyeffect", "specular-core", "0.12.1").test
-  val specularZioTest: Lib = specular.mod("specular-zio-test")
-  val specularSite: Lib    = specular.mod("specular-site")
-  val specularTheme: Lib   = specular.mod("early-effect-docs-theme")
+  val specular: Lib        = Lib("rocks.earlyeffect", "specular-core", "0.12.1")
+  val specularZioTest: Lib = specular.mod("specular-zio-test").test
+  val specularTheme: Lib   = specular.mod("early-effect-docs-theme").test
 
   val chekhovZioTest: Lib = Lib("rocks.earlyeffect", "chekhov-zio-test", "0.0.3").test
   val chekhovDriver: Lib  = chekhovZioTest.mod("chekhov-driver")
@@ -40,6 +43,21 @@ object MyVersions extends ZipxVersions:
   val dynverCi: Plugin       = Plugin("rocks.earlyeffect", "sbt-dynver-ci", "0.2.2")
   val specularPlugin: Plugin = Plugin("rocks.earlyeffect", "sbt-specular", "0.12.1")
   val chekhovPlugin: Plugin  = Plugin("rocks.earlyeffect", "sbt-chekhov", "0.0.3")
+
+  val checkout: Action =
+    Action("actions/checkout", "v7.0.1", sha = "3d3c42e5aac5ba805825da76410c181273ba90b1")
+  val setupJava: Action =
+    Action("actions/setup-java", "v5.7.0", sha = "b6effb05e454b25005698d916606bdc6ffcbf961")
+  val setupSbt: Action =
+    Action("sbt/setup-sbt", "v1.5.7", sha = "8feba82adc7f01ddcf8165b86f778bdb5b82cebc")
+  val setupNode: Action =
+    Action("actions/setup-node", "v7.0.0", sha = "820762786026740c76f36085b0efc47a31fe5020")
+  val cache: Action =
+    Action("actions/cache", "v6.1.0", sha = "55cc8345863c7cc4c66a329aec7e433d2d1c52a9")
+  val uploadArtifact: Action =
+    Action("actions/upload-artifact", "v7.0.1", sha = "043fb46d1a93c77aae656e7c1c64a875d1fc6a0a")
+  val downloadArtifact: Action =
+    Action("actions/download-artifact", "v8.0.1", sha = "3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c")
 
   def plugin = library(
     zio,
@@ -54,7 +72,7 @@ object MyVersions extends ZipxVersions:
     graalJs,
     graalTruffle,
   )
-  def docs       = library(specular, specularZioTest, specularSite, specularTheme, zioTest, zioTestSbt)
-  def e2e        = library(zioTest, zioTestSbt, chekhovZioTest, chekhovDriver)
+  def docs       = library(specularZioTest, specularTheme)
+  def e2e        = library(chekhovZioTest, chekhovDriver)
   def spliceZipx = library(zioTest, zioTestSbt)
 end MyVersions

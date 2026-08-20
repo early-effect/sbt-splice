@@ -81,7 +81,7 @@ lazy val spliceZipx = project
   .settings(
     name        := "sbt-splice-zipx",
     description := "Opt-in zipx pin feed for sbt-splice library pins",
-    addSbtPlugin("rocks.earlyeffect" % "sbt-zipx" % "0.7.1"),
+    addSbtPlugin("rocks.earlyeffect" % "sbt-zipx" % "0.7.2"),
   )
   .settings(pluginSettings)
   .settings(MyVersions.spliceZipx)
