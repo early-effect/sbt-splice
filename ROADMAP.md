@@ -217,7 +217,7 @@ After splice, there are no bare specifiers. Scala.js call sites and every mapped
 
 Feed each spliced file to Closure as **inputs**, not externs. Unused exports can be dropped. Used names are renamed together with the Scala.js call sites.
 
-Externs are for the **browser host** and for names Scala.js already protects (`constructor`, `toString`, `$classData`, `length`, `call`, `apply`, `NaN`, `Infinity`, `undefined`; DOM globals). Mirror the spirit of `ClosureLinkerBackend.ScalaJSExterns`. `BrowserExterns` also declares host **free-vars** (`onmessage`, `attachEvent`, `postMessage`, …) that `js.Dynamic.global` compiles to; Window externs only have those as properties. Node-shaped free-vars (`process`) are `NodeStubs` inputs, not externs. Do not extern a library's public API unless something *outside* the spliced file must call it by a stable name (an HTML inline script). Typical `@JSImport` consumers do not need that.
+Externs are for the **browser host** and for names Scala.js already protects (`constructor`, `toString`, `$classData`, `length`, `call`, `apply`, `NaN`, `Infinity`, `undefined`; DOM globals). Mirror the spirit of `ClosureLinkerBackend.ScalaJSExterns`. `BrowserExterns` also declares host **free-vars** (`onmessage`, `attachEvent`, `postMessage`, …) that `js.Dynamic.global` compiles to; Window externs only have those as properties. Node-shaped free-vars (`process`) are `NodeStubs` inputs, not externs. Do not extern a library's public API unless something *outside* the spliced file must call it by a stable name (an HTML inline script, or a Scala.js `class extends` override of a spliced class). Typical `@JSImport` consumers of functions do not need that; class-component libraries need `.keep`.
 
 If a spliced library is written in a style advanced mode will miscompile, fail the task with the Closure error. Do not silently fall back to concat. Escape hatch: mark a specifier as `extern` (include as a file, don't let Closure rename it) and optionally a conservative Closure `SIMPLE` / whitespace pass on that chunk. That is a last resort and it will miss the size budget. Size budget in Phase 3 decides whether advanced-on-combined is viable; if a real library's shape is too hostile, document the fallback in that PR rather than baking it in now.
 
@@ -383,6 +383,11 @@ splice is not.
 - **`.extern`.** Closure hatch only. Both tasks wrap and prepend (including a
   pure-global library). `spliceFull` does not pass that chunk as a Closure
   input; `__splice_*` is an extra extern so the rest of the program can call it.
+- **`.keep`.** Property externs for names a Scala.js subclass overrides on a
+  spliced class (`render`, lifecycle). Closure cannot see `class extends
+  $superClass`, so without `.keep` the library's method is renamed and the
+  override is dead. `Splice.classComponent` is the React-shaped set. This is
+  not a substitute for `.extern`; unused exports can still be DCE'd.
 - **Module shape.** `spliceFull` is one classic script. `spliceFast` may still
   look like ESM. Whether a production `<script type="module">` can load full is a
   preactile question, not a new splice phase.

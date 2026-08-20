@@ -50,6 +50,27 @@ object Splice:
   ): SpliceLib.WebJar =
     SpliceLib.WebJar(specifier, organization, name, version, path)
 
+  /** Overridable names for React-shaped class components (Preact, React, Inferno). Pass to `SpliceLib.keep`. */
+  val classComponent: Seq[String] = Seq(
+    "props",
+    "state",
+    "context",
+    "setState",
+    "forceUpdate",
+    "render",
+    "componentDidMount",
+    "componentWillMount",
+    "componentWillUnmount",
+    "componentDidUpdate",
+    "componentWillUpdate",
+    "componentWillReceiveProps",
+    "shouldComponentUpdate",
+    "getSnapshotBeforeUpdate",
+    "componentDidCatch",
+    "getDerivedStateFromError",
+    "getDerivedStateFromProps",
+  )
+
   def resolve(libs: Seq[SpliceLib], env: ResolveEnv): IO[SpliceError, Map[String, Path]] =
     Resolve.files(libs, env)
 
@@ -65,6 +86,7 @@ object Splice:
             inputs = packed.bundled,
             prefix = packed.prefix,
             extraExterns = packed.externNames,
+            keepProperties = input.keepProperties,
             sourceMaps = input.sourceMaps,
             sourceMapFile = input.output.getFileName.toString,
           )

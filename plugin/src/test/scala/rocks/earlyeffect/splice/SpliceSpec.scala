@@ -358,6 +358,50 @@ object SpliceSpec extends ZIOSpecDefault:
           body.contains("__splice_foo"),
         )
       },
+      test("spliceFull with classComponent keepProperties calls the Scala.js render override") {
+        for
+          dir <- tempDir
+          foo = dir.resolve("foo.js")
+          _ <- write(foo, classComponentEsm)
+          out = dir.resolve("splice.js")
+          _ <- Splice.run(
+            SpliceInput(
+              linker = List(LinkerFile("main.js", scalaJsSubclassLinker)),
+              libs = Map("foo" -> foo),
+              output = out,
+              optimize = true,
+              keepProperties = Splice.classComponent.toSet,
+            )
+          )
+          body <- ZIO.attempt(Files.readString(out))
+        yield assertTrue(JsHost.evalExpr(body, "document.getElementById('out').textContent") == "OVERRIDE_RENDER")
+      },
+      test("spliceFull without keepProperties does not call a Scala.js class-extends render override") {
+        for
+          dir <- tempDir
+          foo = dir.resolve("foo.js")
+          _ <- write(foo, classComponentEsm)
+          out = dir.resolve("splice.js")
+          _ <- Splice.run(
+            SpliceInput(
+              linker = List(LinkerFile("main.js", scalaJsSubclassLinker)),
+              libs = Map("foo" -> foo),
+              output = out,
+              optimize = true,
+            )
+          )
+          body <- ZIO.attempt(Files.readString(out))
+        yield assertTrue(JsHost.evalExpr(body, "document.getElementById('out').textContent") == "BASE_RENDER")
+      },
+      test("keep unions property names onto every SpliceLib shape") {
+        val file = Splice.file("foo", new java.io.File("foo.js")).keep("render").keep("props")
+        val cdn  = Splice.lib("foo", "1.0.0", "foo.js").keep(Splice.classComponent*)
+        assertTrue(
+          file.keepProperties == Set("render", "props"),
+          cdn.keepProperties.contains("render"),
+          cdn.keepProperties.contains("componentDidMount"),
+        )
+      },
     )
 
   private def vendorBytes(name: String): Array[Byte] =
@@ -380,4 +424,25 @@ object SpliceSpec extends ZIOSpecDefault:
       Files.writeString(path, body)
       ()
     }
+
+  private val classComponentEsm =
+    """function Component() {}
+      |Component.prototype.render = function () { return "BASE_RENDER"; };
+      |function mount(type) {
+      |  var h = new type();
+      |  return h.render();
+      |}
+      |export { Component, mount };
+      |""".stripMargin
+
+  private val scalaJsSubclassLinker =
+    """globalThis["__sbt_splice_extends"] = function (a) {
+      |  var $superClass = a;
+      |  return class extends $superClass {
+      |    ["render"]() { return "OVERRIDE_RENDER"; }
+      |  };
+      |};
+      |var C = globalThis["__sbt_splice_extends"](__splice_foo.Component);
+      |document.getElementById("out").textContent = __splice_foo.mount(C);
+      |""".stripMargin
 end SpliceSpec
