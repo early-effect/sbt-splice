@@ -9,7 +9,7 @@ import java.nio.file.Path
 /** Docs-as-tests site builder (Test classpath; `docs/specularSite`). */
 object BuildSite extends DocsSite:
 
-  def pages = Vector(Overview.doc, Usage.doc, KeepingPins.doc)
+  def pages = Vector(Overview.doc, Usage.doc, Production.doc, KeepingPins.doc)
 
   override def site: SiteModel =
     val m = meta

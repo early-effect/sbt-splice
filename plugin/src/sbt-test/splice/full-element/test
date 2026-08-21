@@ -1,0 +1,4 @@
+# Scala.js subclass of a spliced custom element: spliceFull must call connectedCallback.
+> checkElement
+$ exists target/splice/fast.js
+$ exists target/splice/full.js

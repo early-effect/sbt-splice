@@ -36,6 +36,7 @@ an ascent example) still follow publish. See §6.
 | ir | Private link; `@JSImport` → Global in IR; no linker-JS regex rewrite | done |
 | maps | Configurable source maps (fast on, full off by default) | done |
 | github | Tag tarball resolver, sha256 pin | done |
+| closure-props | Closure does not rename JS properties; no `.keep` whitelist | in progress |
 
 ## Stack and style
 
@@ -88,7 +89,7 @@ Compile / scalaJSIR
         ▼
   optimize             fast: none (readable enough)
                        full: Scala.js minify (already in the private full link)
-                             + Closure advanced on the combined file
+                             + Closure advanced, JS property renaming off
         │
         ▼
   emit                 one browser-loadable file (default),
@@ -162,7 +163,7 @@ Two different tools, two different jobs. Scala.js minify shrinks the Scala graph
 | Task | On top of | Intent |
 |---|---|---|
 | `spliceFast` | private remapped link (fast linker config) | Development, seconds, readable enough |
-| `spliceFull` | private remapped link (full linker config) + Closure | Production, small and efficient |
+| `spliceFull` | private remapped link (full linker config) + Closure (no JS property renaming) | Production, small and efficient |
 
 ### What Scala.js already does (reuse this)
 
@@ -215,23 +216,41 @@ Terser, esbuild, swc, and Rolldown all imply Node or a native binary we will not
 
 After splice, there are no bare specifiers. Scala.js call sites and every mapped library body are one JS program.
 
-Feed each spliced file to Closure as **inputs**, not externs. Unused exports can be dropped. Used names are renamed together with the Scala.js call sites.
+Feed each spliced file to Closure as **inputs**, not externs. Unused exports can be dropped.
 
-Externs are for the **browser host** and for names Scala.js already protects (`constructor`, `toString`, `$classData`, `length`, `call`, `apply`, `NaN`, `Infinity`, `undefined`; DOM globals). Mirror the spirit of `ClosureLinkerBackend.ScalaJSExterns`. `BrowserExterns` also declares host **free-vars** (`onmessage`, `attachEvent`, `postMessage`, …) that `js.Dynamic.global` compiles to; Window externs only have those as properties. Node-shaped free-vars (`process`) are `NodeStubs` inputs, not externs. Do not extern a library's public API unless something *outside* the spliced file must call it by a stable name (an HTML inline script, or a Scala.js `class extends` override of a spliced class). Typical `@JSImport` consumers of functions do not need that; class-component libraries need `.keep`.
+Closure must not rename or disambiguate **JS properties**. Scala.js `class extends $superClass` is opaque to Closure;
+property renaming splits the protocol (override dead, or `a.uJ is not a function` on calls). That is a compiler
+policy (`setDisambiguateProperties(false)`, `PropertyRenamingPolicy.OFF`, `setAssumeStrictThis(false)`), not a per-library name list. There is no
+`.keep` API.
 
-If a spliced library is written in a style advanced mode will miscompile, fail the task with the Closure error. Do not silently fall back to concat. Escape hatch: mark a specifier as `extern` (include as a file, don't let Closure rename it) and optionally a conservative Closure `SIMPLE` / whitespace pass on that chunk. That is a last resort and it will miss the size budget. Size budget in Phase 3 decides whether advanced-on-combined is viable; if a real library's shape is too hostile, document the fallback in that PR rather than baking it in now.
+Scala.js minify (1.16+) still shortens **Scala** class members. That is the type-aware property pass. Closure does not
+get a second one on JS protocols. Vite / Oxc / esbuild / Terser also leave property names (Terser `mangle.properties`
+is off and unsafe). They are not a Node-shaped substitute we will wrap. Closure is the JVM follow-up for DCE and
+local minify on the combined unit.
+
+Externs are for the **browser host** and for names Scala.js already protects (`constructor`, `toString`, `$classData`,
+`length`, `call`, `apply`, `NaN`, `Infinity`, `undefined`; DOM globals). Mirror the spirit of
+`ClosureLinkerBackend.ScalaJSExterns`. `BrowserExterns` also declares host **free-vars** (`onmessage`,
+`attachEvent`, `postMessage`, …) that `js.Dynamic.global` compiles to; Window externs only have those as properties.
+Node-shaped free-vars (`process`) are `NodeStubs` inputs, not externs. Do not extern a library's public API to paper
+over class-extends.
+
+If a spliced library is written in a style advanced mode will miscompile, fail the task with the Closure error. Do not
+silently fall back to concat. Escape hatch: mark a specifier as `extern` (include as a file, do not feed that chunk to
+Closure) and optionally a conservative Closure `SIMPLE` / whitespace pass on that chunk. That is a last resort and it
+will miss the size budget. `.extern` is not how class components work.
 
 ### Size budget
 
-Phase 3 is not done until `spliceFull` output is measurably smaller than unminified concat of `fullLinkJS` plus the same vendor files. Record both byte sizes in the scripted test. Gzip/brotli is informative; uncompressed is the gate. The fixture should be a real published library (or several), not a three-line stub, so DCE has something to do.
+Phase 3 is not done until `spliceFull` output is measurably smaller than unminified concat of `fullLinkJS` plus the same vendor files. Record both byte sizes in the scripted test. Gzip/brotli is informative; uncompressed is the gate. The fixture should be a real published library (or several), not a three-line stub, so DCE has something to do. Do not chase Closure-advanced-with-property-renaming size. Protocol strings (`render`, `componentDidMount`) stay; that is the Vite-shaped trade.
 
 ### Caching: inputs yes, per-dep Closure output no
 
 Coursier caches **fetched** JS: the file from WebJars or jsDelivr. That is independent of your Scala.js program and is the right grain.
 
-Do **not** cache "minified `$lib`" after Closure as a reusable artifact. `spliceFull` runs Closure on **one compilation unit**: Scala.js output plus every spliced file together. Advanced mode rename and DCE see each library *through your call sites*. If the Scala graph stops calling a function, Closure can drop more of that library. If you add a second specifier, the combined graph changes. A previously minified blob is then wrong: either names no longer match the Scala.js side, or you kept unused code.
+Do **not** cache "minified `$lib`" after Closure as a reusable artifact. `spliceFull` runs Closure on **one compilation unit**: Scala.js output plus every spliced file together. DCE sees each library *through your call sites*. If the Scala graph stops calling a function, Closure can drop more of that library. If you add a second specifier, the combined graph changes. A previously minified blob is then wrong: you kept unused code.
 
-Several JS deps make this sharper, not weaker. Five vendor files are still one Closure program. Minifying each, caching each, then concatenating is the unminified-concat failure mode with extra steps. Independent advanced-mode runs also pick independent rename maps, so a name in the library and the same name at the Scala.js call site would not agree unless you extern the whole public API, which throws away DCE.
+Several JS deps make this sharper, not weaker. Five vendor files are still one Closure program. Minifying each, caching each, then concatenating is the unminified-concat failure mode with extra steps. Independent rename maps are not the load-bearing argument (JS properties are not renamed). DCE still depends on this program.
 
 What *does* make sense:
 
@@ -328,7 +347,8 @@ The phase-0–4 internals work. Remaining **in this repo** is the pre-release
 table at the top (all waves done). Central publish waits until you cut that
 release. Consumers adopt from Central after that.
 
-1. **Finish the pre-release waves** (rename, modules, IR, maps, and GitHub are done).
+1. **Finish the pre-release waves** (rename, modules, IR, maps, and GitHub are done;
+   closure-props is the remaining compiler/docs wave).
 2. **First Central publish** of `rocks.earlyeffect` % `sbt-splice`. Until that
    exists, consumers cannot depend on it.
 3. **preactile docs client.** `docs / specularJsLink` stops calling `npm install`
@@ -383,18 +403,27 @@ splice is not.
 - **`.extern`.** Closure hatch only. Both tasks wrap and prepend (including a
   pure-global library). `spliceFull` does not pass that chunk as a Closure
   input; `__splice_*` is an extra extern so the rest of the program can call it.
-- **`.keep`.** Property externs for names a Scala.js subclass overrides on a
-  spliced class (`render`, lifecycle). Closure cannot see `class extends
-  $superClass`, so without `.keep` the library's method is renamed and the
-  override is dead. `Splice.classComponent` is the React-shaped set. This is
-  not a substitute for `.extern`; unused exports can still be DCE'd.
+  Not a protocol whitelist. Class-extends does not need `.extern`.
+- **JS properties.** After `ADVANCED_OPTIMIZATIONS`, `setDisambiguateProperties(false)`,
+  `setAmbiguateProperties(false)`, `PropertyRenamingPolicy.OFF`, no property collapse,
+  no method devirtualize, no property inlining, `setAssumeStrictThis(false)`,
+  `setOptimizeCalls(false)`, `languageOut` ES5 (class methods become prototype
+  assignments), `setAssumePropertiesAreStaticallyAnalyzable(false)` so optional
+  empty lifecycle (`if (h.componentWillMount) h.componentWillMount()`) is not
+  unique-folded to the base. Passes that require closed-world properties
+  (`markPureFunctions`, dead property assignment, extract-prototype) are off.
+  `setProtectHiddenSideEffects(false)` so unused wrap-IIFEs still DCE. Locals,
+  function inlining, and dead-code elimination stay. No `.keep`, no React-shaped
+  name list.
+  `class extends $superClass` (override and call) must work for any spliced class
+  with an empty API.
 - **Module shape.** `spliceFull` is one classic script. `spliceFast` may still
   look like ESM. Whether a production `<script type="module">` can load full is a
   preactile question, not a new splice phase.
 - **Published ESM.** Real packages often put `export{x as h, ...}` on the same
   line as the bundle. `JsModules.rewriteExports` must handle that; leftover
   detection uses `leftoverExports`.
-- **Closure.** JAR is `v20260726` (our pin in `ZipxVersions`, not Scala.js 1.22's `v20220202`). JDK 21+ to run `spliceFull`. Rewrite `\uff3f` / U+FF3F to `$uFF3F` before parse. Host free-vars in `BrowserExterns`; Node-shaped free-vars (`process`) in `NodeStubs` (compiler inputs, not externs). Fail the task on Closure errors. Linker GCC is not ours and may not load after eviction.
+- **Closure.** JAR is `v20260726` (our pin in `ZipxVersions`, not Scala.js 1.22's `v20220202`). JDK 21+ to run `spliceFull`. Rewrite `\uff3f` / U+FF3F to `$uFF3F` before parse. Locals may still rename; JS properties must not. Host free-vars in `BrowserExterns`; Node-shaped free-vars (`process`) in `NodeStubs` (compiler inputs, not externs). Fail the task on Closure errors. Linker GCC is not ours and may not load after eviction.
 - **Allowlist.** `spliceResolvers` is the URL allowlist. A company adds an
   internal Maven repo of WebJars and drops public CDNs.
 - **IR remap.** Mapped `@JSImport` becomes `Global(__splice_*)` in IR. splice
