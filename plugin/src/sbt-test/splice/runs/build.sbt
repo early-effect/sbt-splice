@@ -18,8 +18,8 @@ checkRuns := {
     if (body.contains("from \"preact\"") || body.contains("require(\"preact\")"))
       sys.error(label + ": leftover preact specifier in " + f)
     val got = JsHost.evalExpr(body, "document.getElementById('out').textContent")
-    if (got != "h1")
-      sys.error(label + ": expected vnode type h1, got " + got + " from " + f)
+    if (got != "h1:OVERRIDE_RENDER")
+      sys.error(label + ": expected vnode type plus class render, got " + got + " from " + f)
     ()
   }
   check("spliceFast", spliceFast.value)

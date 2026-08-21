@@ -92,21 +92,14 @@ feed that chunk to advanced mode. Vendor files may be ESM, CJS, or UMD. AMD-only
 `import.meta` fail the task.
 """
     ),
-    section("Class components and spliceFull")(
+    section("Subclassing a spliced class")(
       md"""
-Closure advanced mode renames a spliced library's methods. A Scala.js subclass of that library is emitted as
-`class extends $$superClass`, so Closure cannot see the override and leaves names like `render` literal. The library
-then calls the renamed method, the override is dead, and class components render nothing.
+`spliceFull` does not rename JS properties. A Scala.js subclass of a spliced class is emitted as
+`class extends $$superClass`. Closure cannot see that the super is the library, so property renaming would split
+protocol names (`render`, `setState`, `connectedCallback`). The compiler leaves those names alone. You do not declare
+overridable methods. The why (and how that compares to Vite) is on **Production minify**.
 
-Declare the overridable names with `.keep`. `Splice.classComponent` is the React-shaped set (Preact, React, Inferno):
-
-```scala
-spliceLibs += Splice.lib("preact", "10.26.4", "dist/preact.module.js")
-                 .sha256("…")
-                 .keep(Splice.classComponent*)
-```
-
-`.keep` emits property externs so both sides keep those names. `.extern` does not; it only skips compiling that chunk.
+`.extern` is only for a library Closure cannot compile. It is not required for class components.
 """
     ),
   )

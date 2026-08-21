@@ -190,9 +190,12 @@ object SpliceSpec extends ZIOSpecDefault:
           foo = dir.resolve("foo.js")
           _ <- write(
             foo,
-            """export function used() { return 1; }
-              |export function unused() { return "DEAD_CODE_MARKER"; }
-              |""".stripMargin,
+            s"""export function used() {
+               |  var ${ProtocolFixtures.LongLocal} = 1;
+               |  return ${ProtocolFixtures.LongLocal};
+               |}
+               |export function unused() { return "${ProtocolFixtures.DeadCodeMarker}"; }
+               |""".stripMargin,
           )
           out = dir.resolve("splice.js")
           _ <- Splice.run(
@@ -213,7 +216,8 @@ object SpliceSpec extends ZIOSpecDefault:
           )
           body <- ZIO.attempt(Files.readString(out))
         yield assertTrue(
-          !body.contains("DEAD_CODE_MARKER"),
+          !body.contains(ProtocolFixtures.DeadCodeMarker),
+          !body.contains(ProtocolFixtures.LongLocal),
           !body.contains("export "),
           !body.contains("""from "foo""""),
         )
@@ -358,48 +362,46 @@ object SpliceSpec extends ZIOSpecDefault:
           body.contains("__splice_foo"),
         )
       },
-      test("spliceFull with classComponent keepProperties calls the Scala.js render override") {
+      test("spliceFull class-extends override and setState call work without a keep list") {
         for
           dir <- tempDir
           foo = dir.resolve("foo.js")
-          _ <- write(foo, classComponentEsm)
+          _ <- write(foo, ProtocolFixtures.classComponentEsm)
           out = dir.resolve("splice.js")
           _ <- Splice.run(
             SpliceInput(
-              linker = List(LinkerFile("main.js", scalaJsSubclassLinker)),
-              libs = Map("foo" -> foo),
-              output = out,
-              optimize = true,
-              keepProperties = Splice.classComponent.toSet,
-            )
-          )
-          body <- ZIO.attempt(Files.readString(out))
-        yield assertTrue(JsHost.evalExpr(body, "document.getElementById('out').textContent") == "OVERRIDE_RENDER")
-      },
-      test("spliceFull without keepProperties does not call a Scala.js class-extends render override") {
-        for
-          dir <- tempDir
-          foo = dir.resolve("foo.js")
-          _ <- write(foo, classComponentEsm)
-          out = dir.resolve("splice.js")
-          _ <- Splice.run(
-            SpliceInput(
-              linker = List(LinkerFile("main.js", scalaJsSubclassLinker)),
+              linker = List(LinkerFile("main.js", ProtocolFixtures.scalaJsClassSubclass)),
               libs = Map("foo" -> foo),
               output = out,
               optimize = true,
             )
           )
           body <- ZIO.attempt(Files.readString(out))
-        yield assertTrue(JsHost.evalExpr(body, "document.getElementById('out').textContent") == "BASE_RENDER")
+        yield assertTrue(
+          JsHost.evalExpr(body, "document.getElementById('out').textContent") == ProtocolFixtures.classComponentOut,
+          body.contains("setState"),
+          body.contains("render"),
+          !body.contains(ProtocolFixtures.DeadCodeMarker),
+        )
       },
-      test("keep unions property names onto every SpliceLib shape") {
-        val file = Splice.file("foo", new java.io.File("foo.js")).keep("render").keep("props")
-        val cdn  = Splice.lib("foo", "1.0.0", "foo.js").keep(Splice.classComponent*)
-        assertTrue(
-          file.keepProperties == Set("render", "props"),
-          cdn.keepProperties.contains("render"),
-          cdn.keepProperties.contains("componentDidMount"),
+      test("spliceFull custom-element connectedCallback override runs") {
+        for
+          dir <- tempDir
+          el = dir.resolve("el.js")
+          _ <- write(el, ProtocolFixtures.customElementEsm)
+          out = dir.resolve("splice.js")
+          _ <- Splice.run(
+            SpliceInput(
+              linker = List(LinkerFile("main.js", ProtocolFixtures.scalaJsCustomElementSubclass)),
+              libs = Map("el" -> el),
+              output = out,
+              optimize = true,
+            )
+          )
+          body <- ZIO.attempt(Files.readString(out))
+        yield assertTrue(
+          JsHost.evalExpr(body, "document.getElementById('out').textContent") == ProtocolFixtures.customElementOut,
+          body.contains("connectedCallback"),
         )
       },
     )
@@ -424,25 +426,4 @@ object SpliceSpec extends ZIOSpecDefault:
       Files.writeString(path, body)
       ()
     }
-
-  private val classComponentEsm =
-    """function Component() {}
-      |Component.prototype.render = function () { return "BASE_RENDER"; };
-      |function mount(type) {
-      |  var h = new type();
-      |  return h.render();
-      |}
-      |export { Component, mount };
-      |""".stripMargin
-
-  private val scalaJsSubclassLinker =
-    """globalThis["__sbt_splice_extends"] = function (a) {
-      |  var $superClass = a;
-      |  return class extends $superClass {
-      |    ["render"]() { return "OVERRIDE_RENDER"; }
-      |  };
-      |};
-      |var C = globalThis["__sbt_splice_extends"](__splice_foo.Component);
-      |document.getElementById("out").textContent = __splice_foo.mount(C);
-      |""".stripMargin
 end SpliceSpec

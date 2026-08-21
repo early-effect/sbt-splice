@@ -8,6 +8,7 @@ import com.google.javascript.jscomp.{
   CompilerOptions,
   DiagnosticGroups,
   JSError,
+  PropertyRenamingPolicy,
   SourceFile,
   SourceMap,
 }
@@ -27,9 +28,6 @@ object Closure:
 
   val Version: String = "v20260726"
 
-  /** Bump when `rewriteScalaJsNames` changes so `spliceFull` cache invalidates. */
-  private[splice] val RewriteVersion: String = "1"
-
   /** Scala.js encoding of a real `_` in a Java name (`ISO_8859_1` → `ISO＿8859＿1`). */
   private[splice] val FullwidthLowLine: Char = '\uFF3F'
 
@@ -37,6 +35,71 @@ object Closure:
   private[splice] val FullwidthLowLineStandIn: String = "$uFF3F"
 
   private val fullwidthEscape: Regex = """\\u[Ff][Ff]3[Ff]""".r
+
+  /** Knobs after `ADVANCED_OPTIMIZATIONS`. `programDigest` hashes these so the spliceFull cache invalidates when they
+    * change; there is no bump counter.
+    */
+  private[splice] object AdvancedPolicy:
+    val propertyRenaming: PropertyRenamingPolicy                  = PropertyRenamingPolicy.OFF
+    val disambiguateProperties: Boolean                           = false
+    val ambiguateProperties: Boolean                              = false
+    val collapseProperties: CompilerOptions.PropertyCollapseLevel =
+      CompilerOptions.PropertyCollapseLevel.NONE
+    val devirtualizeMethods: Boolean                     = false
+    val inlineProperties: Boolean                        = false
+    val inlineFunctions: CompilerOptions.Reach           = CompilerOptions.Reach.ALL
+    val assumeStrictThis: Boolean                        = false
+    val protectHiddenSideEffects: Boolean                = false
+    val optimizeCalls: Boolean                           = false
+    val languageOut: CompilerOptions.LanguageMode        = CompilerOptions.LanguageMode.ECMASCRIPT5
+    val removeUnusedPrototypeProperties: Boolean         = false
+    val assumePropertiesAreStaticallyAnalyzable: Boolean = false
+    val computeFunctionSideEffects: Boolean              = false
+    val deadPropertyAssignmentElimination: Boolean       = false
+    val extractPrototypeMemberDeclarations: CompilerOptions.ExtractPrototypeMemberDeclarationsMode =
+      CompilerOptions.ExtractPrototypeMemberDeclarationsMode.OFF
+
+    def fingerprint: String =
+      List(
+        s"standIn=$FullwidthLowLineStandIn",
+        s"fullwidthEscape=${fullwidthEscape.regex}",
+        s"propertyRenaming=$propertyRenaming",
+        s"disambiguateProperties=$disambiguateProperties",
+        s"ambiguateProperties=$ambiguateProperties",
+        s"collapseProperties=$collapseProperties",
+        s"devirtualizeMethods=$devirtualizeMethods",
+        s"inlineProperties=$inlineProperties",
+        s"inlineFunctions=$inlineFunctions",
+        s"assumeStrictThis=$assumeStrictThis",
+        s"protectHiddenSideEffects=$protectHiddenSideEffects",
+        s"optimizeCalls=$optimizeCalls",
+        s"languageOut=$languageOut",
+        s"removeUnusedPrototypeProperties=$removeUnusedPrototypeProperties",
+        s"assumePropertiesAreStaticallyAnalyzable=$assumePropertiesAreStaticallyAnalyzable",
+        s"computeFunctionSideEffects=$computeFunctionSideEffects",
+        s"deadPropertyAssignmentElimination=$deadPropertyAssignmentElimination",
+        s"extractPrototypeMemberDeclarations=$extractPrototypeMemberDeclarations",
+      ).mkString(";")
+
+    def applyTo(options: CompilerOptions): Unit =
+      options.setDisambiguateProperties(disambiguateProperties)
+      options.setAmbiguateProperties(ambiguateProperties)
+      options.setPropertyRenaming(propertyRenaming)
+      options.setCollapsePropertiesLevel(collapseProperties)
+      options.setDevirtualizeMethods(devirtualizeMethods)
+      options.setInlineProperties(inlineProperties)
+      options.setInlineFunctions(inlineFunctions)
+      options.setAssumeStrictThis(assumeStrictThis)
+      options.setProtectHiddenSideEffects(protectHiddenSideEffects)
+      options.setOptimizeCalls(optimizeCalls)
+      options.setLanguageOut(languageOut)
+      options.setRemoveUnusedPrototypeProperties(removeUnusedPrototypeProperties)
+      options.setAssumePropertiesAreStaticallyAnalyzable(assumePropertiesAreStaticallyAnalyzable)
+      options.setComputeFunctionSideEffects(computeFunctionSideEffects)
+      options.setDeadPropertyAssignmentElimination(deadPropertyAssignmentElimination)
+      options.setExtractPrototypeMemberDeclarations(extractPrototypeMemberDeclarations)
+    end applyTo
+  end AdvancedPolicy
 
   private val lock = new Object
 
@@ -86,38 +149,17 @@ object Closure:
     val escaped = fullwidthEscape.replaceAllIn(js, Matcher.quoteReplacement(FullwidthLowLineStandIn))
     escaped.replace(FullwidthLowLine.toString, FullwidthLowLineStandIn)
 
-  private[splice] val SimpleProperty: Regex = """^[A-Za-z_$][A-Za-z0-9_$]*$""".r
-
-  /** Property externs so Closure does not rename overridable names (`render` vs a Scala.js `class extends $super`). */
-  private[splice] def propertyExterns(names: Iterable[String]): String =
-    names.iterator.map(_.trim).filter(_.nonEmpty).toList.distinct.sorted.map(propertyExtern).mkString("\n")
-
-  private def propertyExtern(name: String): String =
-    if SimpleProperty.matches(name) then s"Object.prototype.$name;"
-    else s"Object.prototype['${escapeJsString(name)}'];"
-
-  private def escapeJsString(s: String): String =
-    s.flatMap {
-      case '\\' => "\\\\"
-      case '\'' => "\\'"
-      case '\n' => "\\n"
-      case '\r' => "\\r"
-      case c    => c.toString
-    }
-
   def optimize(
       inputs: List[(String, String)],
       prefix: List[(String, String)] = Nil,
       extraExterns: List[String] = Nil,
-      keepProperties: Iterable[String] = Nil,
       sourceMaps: Boolean = false,
       sourceMapFile: String = "out.js",
   ): IO[SpliceError, Compiled] =
     val prefixJs  = prefix.map(_._2).mkString
     val rewritten = inputs.map((name, code) => name -> rewriteScalaJsNames(code))
-    val kept      = propertyExterns(keepProperties)
     ZIO
-      .attemptBlocking(lock.synchronized(compile(rewritten, extraExterns, kept, sourceMaps, sourceMapFile, prefixJs)))
+      .attemptBlocking(lock.synchronized(compile(rewritten, extraExterns, sourceMaps, sourceMapFile, prefixJs)))
       .mapError(e => SpliceError.Io(s"Closure: ${e.getMessage}"))
       .flatMap {
         case Left(err)       => ZIO.fail(err)
@@ -131,21 +173,18 @@ object Closure:
       output: Path,
       extern: Set[String] = Set.empty,
       sourceMaps: Boolean = false,
-      keepProperties: Set[String] = Set.empty,
   ): String =
     val md                   = MessageDigest.getInstance("SHA-256")
     def add(s: String): Unit =
       md.update(s.getBytes(StandardCharsets.UTF_8))
     add(Version)
-    add(RewriteVersion)
+    add(AdvancedPolicy.fingerprint)
     add(ScalaJSExterns)
     add(BrowserExterns)
     add(NodeStubs)
-    add(propertyExterns(keepProperties))
     add(output.toAbsolutePath.normalize.toString)
     add("extern:" + extern.toList.sorted.mkString(","))
     add("maps:" + sourceMaps)
-    add("keep:" + keepProperties.toList.sorted.mkString(","))
     linker.sortBy(_.label).foreach { f =>
       add(f.label)
       add(f.contents)
@@ -171,7 +210,6 @@ object Closure:
   private def compile(
       inputs: List[(String, String)],
       extraExterns: List[String],
-      keepExterns: String,
       sourceMaps: Boolean,
       sourceMapFile: String,
       prefixJs: String,
@@ -181,8 +219,14 @@ object Closure:
     compiler.disableThreads()
     val options = new CompilerOptions()
     CompilationLevel.ADVANCED_OPTIMIZATIONS.setOptionsForCompilationLevel(options)
+    // Scala.js subclasses are a lazy `$a_*()` factory. Closure cannot see that the super is a
+    // spliced library, and optional lifecycle (`if (h.componentWillMount) h.componentWillMount()`)
+    // unique-folds to the empty base if properties are treated as closed-world. Locals, function
+    // inlining, and unused-export DCE stay. `protectHiddenSideEffects` is off so unused wrap-IIFEs
+    // still fold after `assumeStrictThis` is false. Passes that require static property analysis
+    // are off so `assumePropertiesAreStaticallyAnalyzable` can be false.
+    AdvancedPolicy.applyTo(options)
     options.setLanguageIn(CompilerOptions.LanguageMode.ECMASCRIPT_2021)
-    options.setLanguageOut(CompilerOptions.LanguageMode.ECMASCRIPT_2015)
     options.setPrettyPrint(false)
     options.setRewritePolyfills(false)
     options.setEnvironment(CompilerOptions.Environment.BROWSER)
@@ -201,7 +245,6 @@ object Closure:
     if extraExterns.nonEmpty then
       val decls = extraExterns.map(n => s"var $n;").mkString("\n")
       externs.add(SourceFile.fromCode("SpliceLibExterns.js", decls))
-    if keepExterns.nonEmpty then externs.add(SourceFile.fromCode("SpliceKeepProperties.js", keepExterns))
 
     val sources = new ArrayList[SourceFile](inputs.size + 1)
     sources.add(SourceFile.fromCode("SpliceNodeStubs.js", NodeStubs))

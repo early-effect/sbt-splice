@@ -189,9 +189,8 @@ object SplicePlugin extends AutoPlugin:
     )
     val libMap = RunSplice(Splice.resolve(libs, env))
     val extern = libs.collect { case l if l.isExtern => l.specifier }.toSet
-    val keep   = libs.flatMap(_.keepProperties).toSet
     val digest =
-      if optimize then Some(Closure.programDigest(linker, libMap, out.toPath, extern, sourceMaps, keep))
+      if optimize then Some(Closure.programDigest(linker, libMap, out.toPath, extern, sourceMaps))
       else None
     val mapOut = if sourceMaps then Some(SourceMaps.mapPath(out.toPath)) else None
     val hit    = digest.exists(d => cacheStamp.exists(s => Closure.cacheHit(s.toPath, d, out.toPath, mapOut)))
@@ -204,7 +203,6 @@ object SplicePlugin extends AutoPlugin:
             output = out.toPath,
             optimize = optimize,
             extern = extern,
-            keepProperties = keep,
             sourceMaps = sourceMaps,
           )
         )

@@ -38,21 +38,17 @@ object ClosureSpec extends ZIOSpecDefault:
           !Closure.cacheHit(stamp, "abc", out, Some(dir.resolve("missing.js.map"))),
         )
       },
-      test("optimize is smaller than the concatenated inputs") {
-        val vendor =
-          """const __splice_foo = (() => {
-            |  const module = { exports: {} };
-            |  const exports = module.exports;
-            |  exports.used = function used() { return 1; };
-            |  exports.unused = function unused() { return "DEAD_CODE_MARKER"; };
-            |  return module.exports;
-            |})();
-            |""".stripMargin
-        val linker = "const n = __splice_foo.used();"
-        for got <- Closure.optimize(List("vendor.js" -> vendor, "linker.js" -> linker))
+      test("optimize drops unused exports, minifies locals, and is smaller than concat") {
+        val vendor = ProtocolFixtures.minifyVendor
+        val linker = ProtocolFixtures.minifyLinker
+        for
+          got <- Closure.optimize(List("vendor.js" -> vendor, "linker.js" -> linker))
+          out = JsHost.evalExpr(got.js, "document.getElementById('out').textContent")
         yield assertTrue(
+          out == "1",
           got.js.length < vendor.length + linker.length,
-          !got.js.contains("DEAD_CODE_MARKER"),
+          !got.js.contains(ProtocolFixtures.DeadCodeMarker),
+          !got.js.contains(ProtocolFixtures.LongLocal),
         )
       },
       test("rewriteScalaJsNames replaces escape and raw U+FF3F") {
@@ -125,41 +121,45 @@ object ClosureSpec extends ZIOSpecDefault:
             case _                                 => false
         )
       },
-      test("programDigest changes when keepProperties change") {
-        for
-          dir <- tempDir
-          lib = dir.resolve("foo.js")
-          _ <- write(lib, "export const x = 1;")
-          out    = dir.resolve("full.js")
-          linker = List(LinkerFile("main.js", "const n = 1;"))
-          libs   = Map("foo" -> lib)
-          none   = Closure.programDigest(linker, libs, out)
-          render = Closure.programDigest(linker, libs, out, keepProperties = Set("render"))
-          both   = Closure.programDigest(linker, libs, out, keepProperties = Set("render", "props"))
-        yield assertTrue(none != render, render != both, both != none)
-      },
-      test("propertyExterns emits Object.prototype names, quoted when needed") {
-        assertTrue(
-          Closure.propertyExterns(Seq("render", "componentDidMount")) ==
-            "Object.prototype.componentDidMount;\nObject.prototype.render;",
-          Closure.propertyExterns(Seq("foo-bar")) == "Object.prototype['foo-bar'];",
-          Splice.classComponent.contains("render"),
-        )
-      },
-      test("advanced mode without keepProperties calls the base render, not a Scala.js class-extends override") {
-        for
-          got <- Closure.optimize(List("vendor.js" -> classComponentVendor, "linker.js" -> scalaJsSubclassLinker))
-          out = JsHost.evalExpr(got.js, "document.getElementById('out').textContent")
-        yield assertTrue(out == "BASE_RENDER")
-      },
-      test("advanced mode with keepProperties calls the Scala.js class-extends render override") {
+      test("advanced mode runs a Scala.js class-extends render override and setState call") {
         for
           got <- Closure.optimize(
-            List("vendor.js" -> classComponentVendor, "linker.js" -> scalaJsSubclassLinker),
-            keepProperties = Splice.classComponent,
+            List(
+              "vendor.js"  -> ProtocolFixtures.classComponentVendor,
+              "runtime.js" -> ProtocolFixtures.scalaJsRuntimePadding,
+              "linker.js"  -> ProtocolFixtures.scalaJsClassSubclass,
+            )
           )
           out = JsHost.evalExpr(got.js, "document.getElementById('out').textContent")
-        yield assertTrue(out == "OVERRIDE_RENDER")
+        yield assertTrue(
+          out == ProtocolFixtures.classComponentOut,
+          got.js.contains("setState"),
+          got.js.contains("render"),
+          got.js.contains("componentDidMount"),
+          !got.js.contains(ProtocolFixtures.DeadCodeMarker),
+        )
+      },
+      test("advanced mode keeps a named export like h") {
+        for
+          got <- Closure.optimize(
+            List("vendor.js" -> ProtocolFixtures.classComponentVendor, "linker.js" -> ProtocolFixtures.hCallLinker)
+          )
+          out = JsHost.evalExpr(got.js, "document.getElementById('out').textContent")
+        yield assertTrue(out == "h1")
+      },
+      test("advanced mode runs a custom-element connectedCallback override") {
+        for
+          got <- Closure.optimize(
+            List(
+              "vendor.js" -> ProtocolFixtures.customElementVendor,
+              "linker.js" -> ProtocolFixtures.scalaJsCustomElementSubclass,
+            )
+          )
+          out = JsHost.evalExpr(got.js, "document.getElementById('out').textContent")
+        yield assertTrue(
+          out == ProtocolFixtures.customElementOut,
+          got.js.contains("connectedCallback"),
+        )
       },
     )
 
@@ -171,32 +171,4 @@ object ClosureSpec extends ZIOSpecDefault:
       Files.writeString(path, body)
       ()
     }
-
-  /** Preact-shaped: prototype `render` plus a caller of that property. */
-  private val classComponentVendor =
-    """const __splice_foo = (() => {
-      |  const module = { exports: {} };
-      |  const exports = module.exports;
-      |  function Component() {}
-      |  Component.prototype.render = function () { return "BASE_RENDER"; };
-      |  exports.Component = Component;
-      |  exports.mount = function mount(type) {
-      |    var h = new type();
-      |    return h.render();
-      |  };
-      |  return module.exports;
-      |})();
-      |""".stripMargin
-
-  /** Quoted `render` is not renamed (same outcome as Scala.js `class extends $super` in a large program). */
-  private val scalaJsSubclassLinker =
-    """globalThis["__sbt_splice_extends"] = function (a) {
-      |  var $superClass = a;
-      |  return class extends $superClass {
-      |    ["render"]() { return "OVERRIDE_RENDER"; }
-      |  };
-      |};
-      |var C = globalThis["__sbt_splice_extends"](__splice_foo.Component);
-      |document.getElementById("out").textContent = __splice_foo.mount(C);
-      |""".stripMargin
 end ClosureSpec

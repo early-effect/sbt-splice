@@ -1,4 +1,4 @@
-# Scala.js subclass of a spliced class: spliceFull must call the override (issue 15).
+# Scala.js subclass of a spliced class: spliceFull must call the override and setState (no keep list).
 > checkClass
 $ exists target/splice/fast.js
 $ exists target/splice/full.js

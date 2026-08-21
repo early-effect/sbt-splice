@@ -43,6 +43,9 @@ empty. Vanilla Scala.js `fastLinkJS` / `fullLinkJS` are unchanged; splice writes
 Skip this note if you are not coming from webpack, Vite, or npm. Those tools start from a `package.json` and a
 `node_modules` tree. Splice does not. It never runs npm, never reads `package.json`, and never leaves `import "preact"`
 for a bundler to fix. If you already have a Node pipeline, splice is a different path, not a plugin for that pipeline.
+
+The production minify story (Scala.js minify, then JVM Closure with JS property names left alone, vs Vite) is on
+**Production minify**.
 """
     ),
   )

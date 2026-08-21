@@ -70,6 +70,39 @@ object RunSpec extends ZIOSpecDefault:
         )
         end for
       },
+      test("executes Closure-optimized splice of a Preact class-extends setState and render") {
+        val jsBytes = vendorBytes("preact@10.26.4.module.js")
+        val linker  =
+          """var $superClass = __splice_preact.Component;
+            |class HelloComponent extends $superClass {
+            |  constructor(props, context) { super(props, context); }
+            |  render() { return "OVERRIDE_RENDER"; }
+            |  componentWillMount() { this.setState({ v: 1 }); }
+            |}
+            |var c = new HelloComponent({}, {});
+            |c.componentWillMount();
+            |document.getElementById("out").textContent = String(c.render());
+            |""".stripMargin
+        for
+          dir <- tempDir
+          js = dir.resolve("preact.module.js")
+          _ <- write(js, String(jsBytes, java.nio.charset.StandardCharsets.UTF_8))
+          out = dir.resolve("splice.js")
+          _ <- Splice.run(
+            SpliceInput(
+              linker = List(LinkerFile("main.js", linker)),
+              libs = Map("preact" -> js),
+              output = out,
+              optimize = true,
+            )
+          )
+          body <- ZIO.attempt(Files.readString(out))
+        yield assertTrue(
+          JsHost.evalExpr(body, "document.getElementById('out').textContent") == "OVERRIDE_RENDER",
+          body.contains("setState"),
+        )
+        end for
+      },
       test("executes Closure-optimized splice of preact h()") {
         val jsBytes = vendorBytes("preact@10.26.4.module.js")
         for

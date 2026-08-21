@@ -1,4 +1,4 @@
-# @JSImport("preact") against the published module: spliceFast and spliceFull run on GraalJS.
+# @JSImport("preact") against the published module: h() plus class-extends setState/render on GraalJS.
 > checkRuns
 $ exists target/splice/fast.js
 $ exists target/splice/full.js
