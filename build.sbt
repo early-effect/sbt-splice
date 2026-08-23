@@ -99,13 +99,8 @@ lazy val docs = project
     specularMetaProject    := Some(LocalProject("plugin")),
     specularArtifactKind   := "plugin",
     specularSiteDirectory  := (LocalRootProject / baseDirectory).value / "target" / "site",
-    specularDisplayVersion := {
-      val v = (ThisBuild / version).value
-      if (v.endsWith("-ci") || v.endsWith("-SNAPSHOT"))
-        previousStableVersion.value.getOrElse("<version>")
-      else
-        v
-    },
+    // CI docs builds are dynver `-ci`; stripCi drops the suffix so install snippets show the last published tag.
+    specularDisplayVersion := stripCi,
   )
   .settings(MyVersions.docs)
 
