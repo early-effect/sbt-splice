@@ -2,14 +2,14 @@ MyVersions.settings
 
 organization         := "rocks.earlyeffect"
 organizationName     := "Early Effect"
-organizationHomepage := Some(url("https://www.earlyeffect.rocks"))
+organizationHomepage := Some(uri("https://www.earlyeffect.rocks"))
 versionScheme        := Some("early-semver")
 
-homepage := Some(url("https://github.com/early-effect/sbt-splice"))
-licenses := Seq("Apache-2.0" -> url("http://www.apache.org/licenses/LICENSE-2.0.txt"))
+homepage := Some(uri("https://github.com/early-effect/sbt-splice"))
+licenses := Seq("Apache-2.0" -> uri("http://www.apache.org/licenses/LICENSE-2.0.txt"))
 scmInfo  := Some(
   ScmInfo(
-    url("https://github.com/early-effect/sbt-splice"),
+    uri("https://github.com/early-effect/sbt-splice"),
     "scm:git@github.com:early-effect/sbt-splice.git",
   )
 )
@@ -18,7 +18,7 @@ developers := List(
     id = "russwyte",
     name = "Russ White",
     email = "356303+russwyte@users.noreply.github.com",
-    url = url("https://github.com/russwyte"),
+    url = uri("https://github.com/russwyte"),
   )
 )
 
@@ -94,11 +94,11 @@ lazy val docs = project
     name           := "sbt-splice-docs",
     publish / skip := true,
     scalacOptions ++= scalac,
-    Test / mainClass       := Some("specular.site.DocsServe"),
-    specularBuildMain      := "rocks.earlyeffect.splice.docs.BuildSite",
-    specularMetaProject    := Some(LocalProject("plugin")),
-    specularArtifactKind   := "plugin",
-    specularSiteDirectory  := (LocalRootProject / baseDirectory).value / "target" / "site",
+    Test / mainClass      := Some("specular.site.DocsServe"),
+    specularBuildMain     := "rocks.earlyeffect.splice.docs.BuildSite",
+    specularMetaProject   := Some(LocalProject("plugin")),
+    specularArtifactKind  := "plugin",
+    specularSiteDirectory := (LocalRootProject / baseDirectory).value / "target" / "site",
     // CI docs builds are dynver `-ci`; stripCi drops the suffix so install snippets show the last published tag.
     specularDisplayVersion := stripCi,
   )
