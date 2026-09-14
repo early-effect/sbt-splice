@@ -2,14 +2,14 @@ MyVersions.settings
 
 organization         := "rocks.earlyeffect"
 organizationName     := "Early Effect"
-organizationHomepage := Some(url("https://www.earlyeffect.rocks"))
+organizationHomepage := Some(uri("https://www.earlyeffect.rocks"))
 versionScheme        := Some("early-semver")
 
-homepage := Some(url("https://github.com/early-effect/sbt-splice"))
-licenses := Seq("Apache-2.0" -> url("http://www.apache.org/licenses/LICENSE-2.0.txt"))
+homepage := Some(uri("https://github.com/early-effect/sbt-splice"))
+licenses := Seq("Apache-2.0" -> uri("http://www.apache.org/licenses/LICENSE-2.0.txt"))
 scmInfo  := Some(
   ScmInfo(
-    url("https://github.com/early-effect/sbt-splice"),
+    uri("https://github.com/early-effect/sbt-splice"),
     "scm:git@github.com:early-effect/sbt-splice.git",
   )
 )
@@ -18,7 +18,7 @@ developers := List(
     id = "russwyte",
     name = "Russ White",
     email = "356303+russwyte@users.noreply.github.com",
-    url = url("https://github.com/russwyte"),
+    url = uri("https://github.com/russwyte"),
   )
 )
 
@@ -81,7 +81,12 @@ lazy val spliceZipx = project
   .settings(
     name        := "sbt-splice-zipx",
     description := "Opt-in zipx pin feed for sbt-splice library pins",
-    addSbtPlugin("rocks.earlyeffect" % "sbt-zipx" % "0.7.2"),
+    // zipx drops org.scala-sbt off sbt-remote-cache locally; the published POM does not, so sbt
+    // is re-listed as compile and compiler-interface 2.1 evicts zipx-syntax's scala3-compiler.
+    addSbtPlugin(
+      ("rocks.earlyeffect" % "sbt-zipx" % "0.11.0")
+        .excludeAll(ExclusionRule(organization = "org.scala-sbt", name = "sbt"))
+    ),
   )
   .settings(pluginSettings)
   .settings(MyVersions.spliceZipx)
@@ -94,11 +99,11 @@ lazy val docs = project
     name           := "sbt-splice-docs",
     publish / skip := true,
     scalacOptions ++= scalac,
-    Test / mainClass       := Some("specular.site.DocsServe"),
-    specularBuildMain      := "rocks.earlyeffect.splice.docs.BuildSite",
-    specularMetaProject    := Some(LocalProject("plugin")),
-    specularArtifactKind   := "plugin",
-    specularSiteDirectory  := (LocalRootProject / baseDirectory).value / "target" / "site",
+    Test / mainClass      := Some("specular.site.DocsServe"),
+    specularBuildMain     := "rocks.earlyeffect.splice.docs.BuildSite",
+    specularMetaProject   := Some(LocalProject("plugin")),
+    specularArtifactKind  := "plugin",
+    specularSiteDirectory := (LocalRootProject / baseDirectory).value / "target" / "site",
     // CI docs builds are dynver `-ci`; stripCi drops the suffix so install snippets show the last published tag.
     specularDisplayVersion := stripCi,
   )
@@ -114,24 +119,6 @@ lazy val e2e = project
     scalacOptions ++= scalac,
     testFrameworks += new TestFramework("zio.test.sbt.ZTestFramework"),
     chekhovBrowser := "firefox",
-    // sbt-chekhov 0.0.3 installs every engine; this suite only smokes Firefox.
-    chekhovInstall := Def.uncached {
-      val log     = streams.value.log
-      val name    = chekhovBrowser.value
-      val browser = chekhov.ChekhovBrowser
-        .fromString(name)
-        .getOrElse(
-          sys.error(s"chekhov: unknown browser '$name'")
-        )
-      chekhov.protocol.PinnedPlaywright.install(
-        browsers = List(browser),
-        log = msg => log.info(msg),
-      ) match {
-        case Left(err)  => sys.error(err)
-        case Right(cli) =>
-          log.info(s"Pinned Playwright ${chekhov.protocol.PinnedPlaywright.version} CLI: $cli")
-      }
-    },
   )
   .settings(MyVersions.e2e)
 
