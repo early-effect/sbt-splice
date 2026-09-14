@@ -36,13 +36,13 @@ object MyVersions extends ZipxVersions:
   val specularZioTest: Lib = specular.mod("specular-zio-test").test
   val specularTheme: Lib   = specular.mod("early-effect-docs-theme").test
 
-  val chekhovZioTest: Lib = Lib("rocks.earlyeffect", "chekhov-zio-test", "0.0.5").test
+  val chekhovZioTest: Lib = Lib("rocks.earlyeffect", "chekhov-zio-test", "0.1.1").test
   val chekhovDriver: Lib  = chekhovZioTest.mod("chekhov-driver")
 
   val scalafmt: Plugin       = Plugin("org.scalameta", "sbt-scalafmt", "2.6.2")
   val dynverCi: Plugin       = Plugin("rocks.earlyeffect", "sbt-dynver-ci", "0.2.3")
   val specularPlugin: Plugin = Plugin("rocks.earlyeffect", "sbt-specular", "0.14.2")
-  val chekhovPlugin: Plugin  = Plugin("rocks.earlyeffect", "sbt-chekhov", "0.0.5")
+  val chekhovPlugin: Plugin  = Plugin("rocks.earlyeffect", "sbt-chekhov", "0.1.1")
 
   val checkout: Action =
     Action("actions/checkout", "v7.0.1", sha = "3d3c42e5aac5ba805825da76410c181273ba90b1")

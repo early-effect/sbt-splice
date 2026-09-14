@@ -81,7 +81,12 @@ lazy val spliceZipx = project
   .settings(
     name        := "sbt-splice-zipx",
     description := "Opt-in zipx pin feed for sbt-splice library pins",
-    addSbtPlugin("rocks.earlyeffect" % "sbt-zipx" % "0.7.2"),
+    // zipx drops org.scala-sbt off sbt-remote-cache locally; the published POM does not, so sbt
+    // is re-listed as compile and compiler-interface 2.1 evicts zipx-syntax's scala3-compiler.
+    addSbtPlugin(
+      ("rocks.earlyeffect" % "sbt-zipx" % "0.11.0")
+        .excludeAll(ExclusionRule(organization = "org.scala-sbt", name = "sbt"))
+    ),
   )
   .settings(pluginSettings)
   .settings(MyVersions.spliceZipx)
@@ -114,24 +119,6 @@ lazy val e2e = project
     scalacOptions ++= scalac,
     testFrameworks += new TestFramework("zio.test.sbt.ZTestFramework"),
     chekhovBrowser := "firefox",
-    // sbt-chekhov 0.0.3 installs every engine; this suite only smokes Firefox.
-    chekhovInstall := Def.uncached {
-      val log     = streams.value.log
-      val name    = chekhovBrowser.value
-      val browser = chekhov.ChekhovBrowser
-        .fromString(name)
-        .getOrElse(
-          sys.error(s"chekhov: unknown browser '$name'")
-        )
-      chekhov.protocol.PinnedPlaywright.install(
-        browsers = List(browser),
-        log = msg => log.info(msg),
-      ) match {
-        case Left(err)  => sys.error(err)
-        case Right(cli) =>
-          log.info(s"Pinned Playwright ${chekhov.protocol.PinnedPlaywright.version} CLI: $cli")
-      }
-    },
   )
   .settings(MyVersions.e2e)
 
