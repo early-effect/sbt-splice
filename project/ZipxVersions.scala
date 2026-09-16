@@ -32,7 +32,7 @@ object MyVersions extends ZipxVersions:
   val graalJs: Lib       = Lib("org.graalvm.js", "js-language", "25.2.4").java.test
   val graalTruffle: Lib  = Lib("org.graalvm.truffle", "truffle-runtime", "25.2.4").java.test
 
-  val specular: Lib        = Lib("rocks.earlyeffect", "specular-core", "0.14.2")
+  val specular: Lib        = Lib("rocks.earlyeffect", "specular-core", "0.16.2")
   val specularZioTest: Lib = specular.mod("specular-zio-test").test
   val specularTheme: Lib   = specular.mod("early-effect-docs-theme").test
 
@@ -41,7 +41,7 @@ object MyVersions extends ZipxVersions:
 
   val scalafmt: Plugin       = Plugin("org.scalameta", "sbt-scalafmt", "2.6.2")
   val dynverCi: Plugin       = Plugin("rocks.earlyeffect", "sbt-dynver-ci", "0.2.3")
-  val specularPlugin: Plugin = Plugin("rocks.earlyeffect", "sbt-specular", "0.14.2")
+  val specularPlugin: Plugin = Plugin("rocks.earlyeffect", "sbt-specular", "0.16.2")
   val chekhovPlugin: Plugin  = Plugin("rocks.earlyeffect", "sbt-chekhov", "0.1.1")
 
   val checkout: Action =
