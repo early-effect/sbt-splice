@@ -1,5 +1,5 @@
-# spliceFull of a ZIO Scala.js app: Node process stub.
-> spliceFull
+# spliceFull of a ZIO Scala.js app: Node process stub, keep class extends Error.
+> checkThrowable
 $ exists target/splice/full.js
-> es/spliceFull
+> es/checkThrowable
 $ exists es/target/splice/full.js

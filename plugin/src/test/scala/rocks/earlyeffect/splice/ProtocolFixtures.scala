@@ -149,6 +149,27 @@ private[splice] object ProtocolFixtures:
     """document.getElementById("out").textContent = __splice_foo.h("h1");
       |""".stripMargin
 
+  /** Scala.js minify shape: `class extends Error`, `super()` then fields, getter-only `message` / `name` (`@JSExport`
+    * on `java.lang.Throwable`). Not `Error.call(this); this.message = …`.
+    */
+  val errorSubclass: String =
+    """class $c_jl_Throwable extends Error {
+      |  constructor(msg) { super(); this.s$1 = msg; }
+      |  get message() { return this.s$1 == null ? "" : this.s$1; }
+      |  get name() { return "java.lang.Throwable"; }
+      |  "getMessage"() { return this.s$1; }
+      |}
+      |class $c_jl_RuntimeException extends $c_jl_Throwable {
+      |  constructor(msg) { super(msg); }
+      |}
+      |document.getElementById("out").textContent = (function () {
+      |  try { throw new $c_jl_RuntimeException("boom"); }
+      |  catch (e) { return e.getMessage() + "|" + e.message; }
+      |})();
+      |""".stripMargin
+
+  val errorSubclassOut: String = "boom|boom"
+
   val minifyVendor: String =
     s"""const __splice_min = (() => {
        |  const module = { exports: {} };
