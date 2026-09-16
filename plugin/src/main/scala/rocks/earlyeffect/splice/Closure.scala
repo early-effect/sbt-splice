@@ -45,13 +45,16 @@ object Closure:
     val ambiguateProperties: Boolean                              = false
     val collapseProperties: CompilerOptions.PropertyCollapseLevel =
       CompilerOptions.PropertyCollapseLevel.NONE
-    val devirtualizeMethods: Boolean                     = false
-    val inlineProperties: Boolean                        = false
-    val inlineFunctions: CompilerOptions.Reach           = CompilerOptions.Reach.ALL
-    val assumeStrictThis: Boolean                        = false
-    val protectHiddenSideEffects: Boolean                = false
-    val optimizeCalls: Boolean                           = false
-    val languageOut: CompilerOptions.LanguageMode        = CompilerOptions.LanguageMode.ECMASCRIPT5
+    val devirtualizeMethods: Boolean           = false
+    val inlineProperties: Boolean              = false
+    val inlineFunctions: CompilerOptions.Reach = CompilerOptions.Reach.ALL
+    val assumeStrictThis: Boolean              = false
+    val protectHiddenSideEffects: Boolean      = false
+    val optimizeCalls: Boolean                 = false
+    // Scala.js minify emits `class Throwable extends Error { constructor() { super(); } }`
+    // plus getter-only `@JSExport("message")`. ES5 rewrote that to `Error.call(this);
+    // this.message = …`, which is Call not SuperCall and assigns a getter-only export.
+    val languageOut: CompilerOptions.LanguageMode        = CompilerOptions.LanguageMode.ECMASCRIPT_2015
     val removeUnusedPrototypeProperties: Boolean         = false
     val assumePropertiesAreStaticallyAnalyzable: Boolean = false
     val computeFunctionSideEffects: Boolean              = false

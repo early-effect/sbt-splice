@@ -407,8 +407,10 @@ splice is not.
 - **JS properties.** After `ADVANCED_OPTIMIZATIONS`, `setDisambiguateProperties(false)`,
   `setAmbiguateProperties(false)`, `PropertyRenamingPolicy.OFF`, no property collapse,
   no method devirtualize, no property inlining, `setAssumeStrictThis(false)`,
-  `setOptimizeCalls(false)`, `languageOut` ES5 (class methods become prototype
-  assignments), `setAssumePropertiesAreStaticallyAnalyzable(false)` so optional
+  `setOptimizeCalls(false)`, `languageOut` ES2015 (Scala.js minify already emits
+  `class extends Error` with `super()`; ES5 rewrote that to `Error.call(this);
+  this.message = …`, which is not SuperCall and assigns the getter-only
+  `@JSExport("message")` on Throwable), `setAssumePropertiesAreStaticallyAnalyzable(false)` so optional
   empty lifecycle (`if (h.componentWillMount) h.componentWillMount()`) is not
   unique-folded to the base. Passes that require closed-world properties
   (`markPureFunctions`, dead property assignment, extract-prototype) are off.

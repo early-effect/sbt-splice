@@ -161,6 +161,18 @@ object ClosureSpec extends ZIOSpecDefault:
           got.js.contains("connectedCallback"),
         )
       },
+      test("advanced mode keeps Scala.js class extends Error and super instead of Error.call") {
+        for
+          got <- Closure.optimize(List("linker.js" -> ProtocolFixtures.errorSubclass))
+          out = JsHost.evalExpr(got.js, "document.getElementById('out').textContent")
+        yield assertTrue(
+          out == ProtocolFixtures.errorSubclassOut,
+          got.js.contains("extends Error"),
+          !got.js.contains("Error.call("),
+          !got.js.contains("this.message="),
+          !got.js.contains("this.message ="),
+        )
+      },
     )
 
   private def tempDir: UIO[Path] =

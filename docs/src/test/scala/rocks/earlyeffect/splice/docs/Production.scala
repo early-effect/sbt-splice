@@ -65,6 +65,12 @@ Dead-code elimination of unused vendor exports, inlining, and local-variable min
 vendor files. It is not as small as Gmail-era Closure with property renaming. Protocol strings stay; that is the
 Vite-shaped trade.
 
+Scala.js minify already emits `class $$c_jl_Throwable extends Error` with `super()`, then getter-only
+`@JSExport("message")` / `@JSExport("name")`. That is SuperCall (`Construct` with `new.target`). Closure
+`languageOut` is ES2015 so spliceFull does not rewrite it to `Error.call(this); this.message = …`. Error's
+`[[Call]]` ignores `this` and returns a new Error; the assignment then writes a getter-only export and throws in
+strict mode (`<script type="module">`, `'use strict'`).
+
 `.extern` on a `spliceLibs` entry is a different hatch: skip advanced mode on a whole chunk Closure cannot compile.
 Both tasks still wrap and prepend that library. It is not how class components work.
 """
