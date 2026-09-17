@@ -1,0 +1,17 @@
+# One sbt boot: class-extends, custom element, size budget, host stubs, ZIO Throwable.
+> widget/checkClass
+$ exists widget/target/splice/fast.js
+$ exists widget/target/splice/full.js
+> element/checkElement
+$ exists element/target/splice/fast.js
+$ exists element/target/splice/full.js
+> size/checkSize
+$ exists size/target/splice/full.js
+> host/spliceFull
+$ exists host/target/splice/full.js
+> hostEs/spliceFull
+$ exists host-es/target/splice/full.js
+> zio/checkThrowable
+$ exists zio/target/splice/full.js
+> zioEs/checkThrowable
+$ exists zio-es/target/splice/full.js

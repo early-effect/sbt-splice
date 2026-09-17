@@ -37,7 +37,7 @@ val scalac = Seq("-deprecation", "-feature", "-Wunused:all")
 val pluginSettings = Seq(
   scalacOptions ++= scalac,
   testFrameworks += new TestFramework("zio.test.sbt.ZTestFramework"),
-  scriptedLaunchOpts ++= Seq("-Xmx512m", s"-Dplugin.version=${version.value}"),
+  scriptedLaunchOpts ++= Seq("-Xmx2g", s"-Dplugin.version=${version.value}"),
   scriptedBufferLog    := false,
   publishMavenStyle    := true,
   pomIncludeRepository := { _ => false },

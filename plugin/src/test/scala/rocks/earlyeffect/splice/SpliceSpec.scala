@@ -211,7 +211,7 @@ object SpliceSpec extends ZIOSpecDefault:
               ),
               libs = Map("foo" -> foo),
               output = out,
-              optimize = true,
+              minify = Minify.Closure,
             )
           )
           body <- ZIO.attempt(Files.readString(out))
@@ -234,7 +234,7 @@ object SpliceSpec extends ZIOSpecDefault:
                 linker = List(LinkerFile("main.js", "const Foo = __splice_foo;\n")),
                 libs = Map("foo" -> foo),
                 output = out,
-                optimize = true,
+                minify = Minify.Closure,
               )
             )
             .flip
@@ -352,7 +352,7 @@ object SpliceSpec extends ZIOSpecDefault:
               ),
               libs = Map("foo" -> foo),
               output = out,
-              optimize = true,
+              minify = Minify.Closure,
               extern = Set("foo"),
             )
           )
@@ -373,7 +373,7 @@ object SpliceSpec extends ZIOSpecDefault:
               linker = List(LinkerFile("main.js", ProtocolFixtures.scalaJsClassSubclass)),
               libs = Map("foo" -> foo),
               output = out,
-              optimize = true,
+              minify = Minify.Closure,
             )
           )
           body <- ZIO.attempt(Files.readString(out))
@@ -395,7 +395,7 @@ object SpliceSpec extends ZIOSpecDefault:
               linker = List(LinkerFile("main.js", ProtocolFixtures.scalaJsCustomElementSubclass)),
               libs = Map("el" -> el),
               output = out,
-              optimize = true,
+              minify = Minify.Closure,
             )
           )
           body <- ZIO.attempt(Files.readString(out))

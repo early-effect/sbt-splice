@@ -24,16 +24,20 @@ object SplicePlugin extends AutoPlugin:
     val spliceResolvers = settingKey[Seq[SpliceResolver]](
       "Where to fetch remote JS. Maven/WebJar uses project resolvers; add Splice.jsDelivr / Splice.unpkg for CDNs, Splice.github for tag tarballs."
     )
-    val spliceFastOutput = settingKey[File]("Where spliceFast writes the spliced JS.")
-    val spliceFullOutput = settingKey[File]("Where spliceFull writes the spliced JS.")
-    val spliceFast       = taskKey[File](
+    val spliceFastOutput    = settingKey[File]("Where spliceFast writes the spliced JS.")
+    val spliceFullOutput    = settingKey[File]("Where spliceFull writes the spliced JS.")
+    val spliceClosureOutput = settingKey[File]("Where spliceClosure writes the spliced JS.")
+    val spliceFast          = taskKey[File](
       "Private-link remapped IR, then splice pinned JS (development)."
     )
     val spliceFull = taskKey[File](
-      "Private-link remapped IR, splice pinned JS, then Closure-advanced (production)."
+      "Private-link remapped IR, splice pinned JS, then esbuild minify (production)."
+    )
+    val spliceClosure = taskKey[File](
+      "Private-link remapped IR, splice pinned JS, then Closure advanced."
     )
     val spliceSourceMaps = settingKey[Boolean](
-      "Write a source map next to the spliced JS. Default true on spliceFast, false on spliceFull."
+      "Write a source map next to the spliced JS. Default true on spliceFast, false on spliceFull and spliceClosure."
     )
     export rocks.earlyeffect.splice.{Splice, SpliceLib, SpliceResolver}
     export rocks.earlyeffect.splice.SpliceLib.sha256
@@ -67,16 +71,18 @@ object SplicePlugin extends AutoPlugin:
     },
     // sbt 2 `target` is `target/out/jvm/scala-…/<id>/`. Keep splice output at the
     // project-root path docs advertise (`target/splice/fast.js`).
-    spliceFastOutput              := Def.uncached(baseDirectory.value / "target" / "splice" / "fast.js"),
-    spliceFullOutput              := Def.uncached(baseDirectory.value / "target" / "splice" / "full.js"),
-    spliceFast / spliceSourceMaps := true,
-    spliceFull / spliceSourceMaps := false,
-    spliceFast                    := Def.uncached(
+    spliceFastOutput                 := Def.uncached(baseDirectory.value / "target" / "splice" / "fast.js"),
+    spliceFullOutput                 := Def.uncached(baseDirectory.value / "target" / "splice" / "full.js"),
+    spliceClosureOutput              := Def.uncached(baseDirectory.value / "target" / "splice" / "closure.js"),
+    spliceFast / spliceSourceMaps    := true,
+    spliceFull / spliceSourceMaps    := false,
+    spliceClosure / spliceSourceMaps := false,
+    spliceFast                       := Def.uncached(
       spliceTask(
         stage = fastLinkJS,
         linkDirName = "fast-link",
         out = spliceFastOutput,
-        optimize = false,
+        minify = Minify.None,
       ).value
     ),
     spliceFull := Def.uncached(
@@ -84,7 +90,15 @@ object SplicePlugin extends AutoPlugin:
         stage = fullLinkJS,
         linkDirName = "full-link",
         out = spliceFullOutput,
-        optimize = true,
+        minify = Minify.Esbuild,
+      ).value
+    ),
+    spliceClosure := Def.uncached(
+      spliceTask(
+        stage = fullLinkJS,
+        linkDirName = "full-link",
+        out = spliceClosureOutput,
+        minify = Minify.Closure,
       ).value
     ),
   )
@@ -93,7 +107,7 @@ object SplicePlugin extends AutoPlugin:
       stage: TaskKey[sbt.Attributed[org.scalajs.linker.interface.Report]],
       linkDirName: String,
       out: SettingKey[File],
-      optimize: Boolean,
+      minify: Minify,
   ): Def.Initialize[Task[File]] =
     Def.taskDyn {
       val irInfo     = (Compile / scalaJSIR).value
@@ -111,9 +125,14 @@ object SplicePlugin extends AutoPlugin:
       val localOnly  = offline.value
       val extractDir = (baseDirectory.value / "target" / "splice" / "extracted").toPath
       val linkDir    = baseDirectory.value / "target" / "splice" / linkDirName
-      val mapsOn     = ((if optimize then spliceFull else spliceFast) / spliceSourceMaps).value
-      val stamp      =
-        if optimize then Some(streams.value.cacheDirectory / "splice-full-digest") else None
+      val mapsOn     = minify match
+        case Minify.None    => (spliceFast / spliceSourceMaps).value
+        case Minify.Esbuild => (spliceFull / spliceSourceMaps).value
+        case Minify.Closure => (spliceClosure / spliceSourceMaps).value
+      val stamp = minify match
+        case Minify.None    => None
+        case Minify.Esbuild => Some(streams.value.cacheDirectory / "splice-full-digest")
+        case Minify.Closure => Some(streams.value.cacheDirectory / "splice-closure-digest")
       Def
         .task {
           Def.uncached {
@@ -127,7 +146,7 @@ object SplicePlugin extends AutoPlugin:
               cacheDir = cacheDir,
               localOnly = localOnly,
               extractDir = extractDir,
-              optimize = optimize,
+              minify = minify,
               cacheStamp = stamp,
               sourceMaps = mapsOn,
             )
@@ -166,7 +185,7 @@ object SplicePlugin extends AutoPlugin:
       cacheDir: Path,
       localOnly: Boolean,
       extractDir: Path,
-      optimize: Boolean,
+      minify: Minify,
       cacheStamp: Option[File],
       sourceMaps: Boolean,
   ): File =
@@ -189,9 +208,10 @@ object SplicePlugin extends AutoPlugin:
     )
     val libMap = RunSplice(Splice.resolve(libs, env))
     val extern = libs.collect { case l if l.isExtern => l.specifier }.toSet
-    val digest =
-      if optimize then Some(Closure.programDigest(linker, libMap, out.toPath, extern, sourceMaps))
-      else None
+    val digest = minify match
+      case Minify.None    => None
+      case Minify.Esbuild => Some(EsbuildNative.programDigest(linker, libMap, out.toPath, extern, sourceMaps))
+      case Minify.Closure => Some(Closure.programDigest(linker, libMap, out.toPath, extern, sourceMaps))
     val mapOut = if sourceMaps then Some(SourceMaps.mapPath(out.toPath)) else None
     val hit    = digest.exists(d => cacheStamp.exists(s => Closure.cacheHit(s.toPath, d, out.toPath, mapOut)))
     if !hit then
@@ -201,9 +221,11 @@ object SplicePlugin extends AutoPlugin:
             linker = linker,
             libs = libMap,
             output = out.toPath,
-            optimize = optimize,
+            minify = minify,
             extern = extern,
             sourceMaps = sourceMaps,
+            cacheDir = cacheDir,
+            localOnly = localOnly,
           )
         )
       )

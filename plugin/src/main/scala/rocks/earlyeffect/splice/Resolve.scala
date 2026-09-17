@@ -69,6 +69,9 @@ object Resolve:
             else ZIO.fail(SpliceError.ChecksumMismatch(lib.specifier, expected, actual)),
         )
 
+  private[splice] def fetchCached(url: String, env: ResolveEnv): IO[SpliceError, Path] =
+    fetch(url, env)
+
   private def fetch(url: String, env: ResolveEnv): IO[SpliceError, Path] =
     ZIO
       .attemptBlocking {

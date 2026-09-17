@@ -1,0 +1,19 @@
+# One sbt boot: resolver pins, hash failures, WebJar, maps, empty spliceLibs.
+> plugins
+> spliceFast
+$ exists target/splice/fast.js
+> spliceFull
+$ exists target/splice/full.js
+> cdn/checkSpliced
+$ exists cdn/target/splice/fast.js
+-> cdnHash/spliceFast
+-> cdnOmit/spliceFast
+> github/checkSpliced
+$ exists github/target/splice/fast.js
+-> githubHash/spliceFast
+> webjar/checkSpliced
+$ exists webjar/target/splice/fast.js
+-> unresolved/spliceFast
+> maps/checkMaps
+$ exists maps/target/custom/app.js
+$ exists maps/target/custom/app.js.map

@@ -36,8 +36,8 @@ object Closure:
 
   private val fullwidthEscape: Regex = """\\u[Ff][Ff]3[Ff]""".r
 
-  /** Knobs after `ADVANCED_OPTIMIZATIONS`. `programDigest` hashes these so the spliceFull cache invalidates when they
-    * change; there is no bump counter.
+  /** Knobs after `ADVANCED_OPTIMIZATIONS`. `programDigest` hashes these so the spliceClosure cache invalidates when
+    * they change; there is no bump counter.
     */
   private[splice] object AdvancedPolicy:
     val propertyRenaming: PropertyRenamingPolicy                  = PropertyRenamingPolicy.OFF

@@ -1,5 +1,7 @@
 package rocks.earlyeffect.splice
 
+import coursier.cache.FileCache
+
 import java.nio.file.Path
 
 /** One JS file from the Scala.js linker output directory. */
@@ -10,7 +12,9 @@ final case class SpliceInput(
     linker: List[LinkerFile],
     libs: Map[String, Path],
     output: Path,
-    optimize: Boolean = false,
+    minify: Minify = Minify.None,
     extern: Set[String] = Set.empty,
     sourceMaps: Boolean = false,
+    cacheDir: Path = FileCache().location.toPath,
+    localOnly: Boolean = false,
 )

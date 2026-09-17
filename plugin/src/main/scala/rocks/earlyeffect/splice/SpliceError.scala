@@ -14,6 +14,7 @@ enum SpliceError derives CanEqual:
   case MissingArchivePath(specifier: String, archive: String, path: String)
   case Unwrappable(file: String, reason: String)
   case Closure(detail: String)
+  case Minify(detail: String)
   case Io(detail: String)
 
   def message: String = this match
@@ -41,6 +42,8 @@ enum SpliceError derives CanEqual:
       s"sbt-splice: could not wrap $file: $reason"
     case Closure(detail) =>
       s"sbt-splice: Closure compiler failed:\n$detail"
+    case Minify(detail) =>
+      s"sbt-splice: minify failed:\n$detail"
     case Io(detail) =>
       s"sbt-splice: $detail"
 end SpliceError

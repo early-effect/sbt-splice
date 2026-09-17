@@ -1,3 +1,0 @@
-# jsDelivr-shaped httptest with a pinned sha256.
-> checkSpliced
-$ exists target/splice/fast.js

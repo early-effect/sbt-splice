@@ -59,8 +59,9 @@ object Splice:
       packed <- pack(input)
       spliced = packed.concat
       _        <- leftover(spliced, input.libs.keys, input.output)
-      compiled <-
-        if input.optimize then
+      compiled <- input.minify match
+        case Minify.None    => ZIO.succeed(Closure.Compiled(spliced, fastMap(packed, input)))
+        case Minify.Closure =>
           Closure.optimize(
             inputs = packed.bundled,
             prefix = packed.prefix,
@@ -68,7 +69,10 @@ object Splice:
             sourceMaps = input.sourceMaps,
             sourceMapFile = input.output.getFileName.toString,
           )
-        else ZIO.succeed(Closure.Compiled(spliced, fastMap(packed, input)))
+        case Minify.Esbuild =>
+          EsbuildNative
+            .optimize(spliced, input.cacheDir, input.localOnly)
+            .map(js => Closure.Compiled(js, None))
       _ <- write(input.output, finishJs(compiled.js, compiled.sourceMap, input))
       _ <- compiled.sourceMap match
         case Some(m) => write(SourceMaps.mapPath(input.output), m)
@@ -122,7 +126,7 @@ object Splice:
         _ <- ZIO.foreachDiscard(input.libs.toList.sortBy(_._1)): (spec, path) =>
           wrap(spec, path, input.extern.contains(spec))
         rewritten = input.linker.map(_.contents).mkString("\n")
-        linkerJs  = if input.optimize then JsModules.dropExports(rewritten) else rewritten
+        linkerJs  = if input.minify != Minify.None then JsModules.dropExports(rewritten) else rewritten
         bundledJs = bundled.toList :+ ("linker.js" -> linkerJs)
         names     = input.extern.toList.sorted.map(JsModules.ident)
       yield Packed(bundledJs, prefix.toList, names)
