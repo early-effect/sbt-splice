@@ -1,11 +1,13 @@
 # sbt-splice
 
 Scala.js emits `import "preact"` for `@JSImport("preact")` (or `require`). A browser cannot resolve that **specifier**:
-there is no `node_modules`. **sbt-splice** is an sbt 2 / Scala 3 plugin that maps each specifier to pinned bytes (a
-file you copied, a WebJar, or a CDN/GitHub download with sha256) and writes one script for a `<script>` tag. With no
-npm imports, leave `spliceLibs` empty; `spliceFull` is still the production file. `spliceFast` is development;
-`spliceFull` is production minify (pinned native esbuild, fetched on first use). `spliceClosure` is optional Closure advanced.
-The plugin never runs npm.
+there is no `node_modules`. **sbt-splice** maps each specifier to pinned bytes (a file you copied, a WebJar, or a
+CDN/GitHub download with sha256) and writes one script for a `<script>` tag.
+
+You do not install Node, Vite, or esbuild. `spliceFast` is concat (development). `spliceFull` is the production
+file: Scala.js minify, then the same kind of minify Vite uses (locals, whitespace, JS property names stay). On first
+`spliceFull` the plugin fetches a pinned esbuild for this OS/arch through Coursier. `spliceClosure` is optional
+Closure advanced. With no npm imports, leave `spliceLibs` empty; `spliceFull` is still the production file.
 
 Coordinate: `rocks.earlyeffect` % `sbt-splice`
 

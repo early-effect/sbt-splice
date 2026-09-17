@@ -8,23 +8,26 @@ object Production extends DocSpecSuite:
 
   def doc = page("Production minify")(
     md"""
-`spliceFast` is the development file (concat). `spliceFull` is the production file: Scala.js minify of the Scala
-graph, then **esbuild** minify of the printed script (vendor wrappers plus that output). That pass runs even
-when `spliceLibs` is empty. esbuild is a per-platform binary, sha256-pinned, fetched through Coursier on first
-`spliceFull`. It is not a git blob and not a brew/npm install.
+The point of `spliceFull` is a modern production JS file **without a JS toolchain**. You do not install Node, Vite,
+or esbuild. JDK and sbt were already on the machine. First `spliceFull` fetches a pinned esbuild for this OS/arch
+through Coursier (sha256 of the binary, then `chmod +x`). After that it is a cache hit, like a jar.
 
-`spliceClosure` is optional Closure advanced on the same printed file. JDK 21+ for that task only.
+`spliceFast` is concat (development). `spliceFull` is Scala.js minify of the Scala graph, then esbuild minify of the
+printed script (vendor wrappers plus that output). Locals and whitespace shrink. JS **property** names stay, so a
+Preact `class extends Component` still has `.render` / `.setState`. `class extends Error` keeps `super()`. That is
+the Vite-shaped pass. It runs even when `spliceLibs` is empty.
 
-This page is why production minify matches Vite, why Closure is opt-in, and why neither pass renames JS properties.
+`spliceClosure` is optional Closure advanced on the same printed file. JDK 21+ for that task only. Use it if you
+want unused-vendor DCE that esbuild will not do on a wrap-IIFE.
 """,
     section("Three tools, three jobs")(
       md"""
 **Scala.js minify** (1.16+, on in `fullLink`) shortens **Scala** class fields and methods. The linker has types, so
 those names cannot be a JS protocol (`render`, `setState`, `connectedCallback`). That is the type-aware property pass.
 
-**esbuild** (pinned native binary) then minifies the **printed** spliced file: locals, syntax, whitespace. JS
-**property** names stay. `class extends Error` keeps `super()`. This is the Vite-shaped pass Scala.js 1.21 asked for,
-without Node.
+**esbuild** (pinned native binary, fetched on first `spliceFull`) then minifies the **printed** spliced file:
+locals, syntax, whitespace. JS **property** names stay. `class extends Error` keeps `super()`. This is the pass
+Scala.js 1.21 named Vite for, without Node.
 
 **Closure** is the same printed file under `ADVANCED`, property renaming off. It can still DCE unused vendor exports
 inside a wrap-IIFE. That is extra size, not the production default. JDK 21+.
@@ -36,11 +39,12 @@ Sealed pins and one `<script>` tag are the product.
     section("What Vite actually minifies")(
       md"""
 Vite production minify shortens local variables, strips whitespace, and tree-shakes unused ESM exports. **Property
-names stay.** `.setState`, `.render`, and `componentDidMount` are still those strings.
+names stay.** `.setState`, `.render`, and `componentDidMount` are still those strings. `spliceFull` does the first
+two with the same esbuild. It does not walk `node_modules` as ESM; spliced libraries are wrap-IIFEs, so unused
+vendor exports stay unless you run `spliceClosure`.
 
-Terser documents `mangle.properties` as unsafe and **off by default**. People who turn it on usually mangle only a
-private regex (`/^_/`), not a catalog of framework methods. A Preact class component that worked under Vite is the
-baseline, not a special case splice has to list names for.
+Terser documents `mangle.properties` as unsafe and **off by default**. A Preact class component that worked under
+Vite is the baseline, not a special case splice has to list names for.
 """
     ),
     section("What Closure advanced does that they refuse")(
@@ -76,7 +80,7 @@ Scala.js minify already emits `class $$c_jl_Throwable extends Error` with `super
 `languageOut` is ES2015 so `spliceClosure` does not rewrite it to `Error.call(this); this.message = …`.
 
 `.extern` on a `spliceLibs` entry is a different hatch: skip advanced mode on a whole chunk Closure cannot compile.
-Both tasks still wrap and prepend that library. It is not how class components work.
+`spliceFast` / `spliceFull` / `spliceClosure` still wrap and prepend that library. It is not how class components work.
 """
     ),
     section("Fast vs full")(

@@ -15,10 +15,10 @@ object BuildSite extends DocsSite:
     val m = meta
     super.site.copy(
       summaryMarkdown = Some(
-        s"""**sbt-splice** writes one browser-loadable script from a Scala.js project. Map `@JSImport`
-specifiers to pinned bytes (a file, a WebJar, or a CDN/GitHub download with sha256), or leave
-`spliceLibs` empty for a Scala-only client. Then `spliceFast` or `spliceFull` writes a file for a
-`<script>` tag. sbt 2 and Scala 3 only. `spliceClosure` needs JDK 21+.
+        s"""**sbt-splice** writes one browser-loadable script from a Scala.js project. No Node, no Vite,
+no `package.json`. Map `@JSImport` specifiers to pinned bytes, or leave `spliceLibs` empty.
+`spliceFull` is production minify (pinned esbuild, fetched on first use). `spliceFast` is concat.
+sbt 2 and Scala 3 only. Optional `spliceClosure` needs JDK 21+.
 """
       ),
       installSnippets = Vector(

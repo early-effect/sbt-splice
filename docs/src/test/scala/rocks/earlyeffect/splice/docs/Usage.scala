@@ -26,9 +26,9 @@ the classpath. Use `ModuleKind.ESModule` (or CommonJS) when you have `@JSImport`
     section("Scala-only (no npm imports)")(
       md"""
 Leave `spliceLibs` empty. `spliceFast` and `spliceFull` still write `target/splice/fast.js` and
-`target/splice/full.js`. `spliceFull` is the Node-free production bundle (esbuild minify). It stubs
-Node-shaped free-vars (starting with `process`) so isomorphic Scala.js such as ZIO `System.env` /
-exit works without Node.
+`target/splice/full.js`. You still do not install Node or Vite. `spliceFull` is the production bundle
+(Scala.js minify, then pinned esbuild). It stubs Node-shaped free-vars (starting with `process`) so
+isomorphic Scala.js such as ZIO `System.env` / exit works without Node.
 
 ```scala
 enablePlugins(ScalaJSPlugin)
@@ -76,7 +76,8 @@ spliceLibs += Splice.github("foo", "owner/repo", "1.2.3", "dist/foo.js")
 - **GitHub pin:** `owner/repo`, an exact tag, and a path inside that tag's tarball. **sha256** pins the tarball. Add
   `Splice.github`. A 404 retries the `v`-prefixed tag.
 
-CDN and GitHub fetches go through Coursier (the same cache sbt uses for jars). The plugin never runs npm.
+CDN and GitHub fetches go through Coursier (the same cache sbt uses for jars). So does the pinned esbuild
+binary on first `spliceFull`. The plugin never runs npm and never asks you to brew-install esbuild.
 """
     ),
     section("Tasks")(
@@ -84,8 +85,9 @@ CDN and GitHub fetches go through Coursier (the same cache sbt uses for jars). T
 - `spliceFast` writes the development file (`target/splice/fast.js` by default). Source maps are on
   (`spliceFast / spliceSourceMaps`). Concat only.
 - `spliceFull` writes the production file (`target/splice/full.js`), then minifies with a pinned native esbuild for
-  this OS/arch (Coursier fetch, sha256, no user install). Source maps are off by default. This is the production
-  task. It runs even when `spliceLibs` is empty.
+  this OS/arch (Coursier fetch, sha256). Same kind of minify as Vite: locals and whitespace, not JS property names.
+  First use downloads the binary. After that it is a cache hit. Source maps are off by default. This is the
+  production task. It runs even when `spliceLibs` is empty.
 - `spliceClosure` is optional Closure advanced (`target/splice/closure.js`). Use it when you want unused-vendor DCE
   that minify will not do. Closure needs **JDK 21+**.
 
@@ -97,8 +99,8 @@ CDN and GitHub fetches go through Coursier (the same cache sbt uses for jars). T
     section("Subclassing a spliced class")(
       md"""
 `spliceFull` minifies like Vite: locals and whitespace, not JS property names. A Scala.js subclass of a spliced
-class is `class extends $$superClass`. `render` / `setState` / `connectedCallback` stay those strings. `spliceClosure`
-uses the same property policy (renaming off) plus Closure DCE. You do not declare overridable methods. The why is on
+class is `class extends $$superClass`. `render` / `setState` / `connectedCallback` stay those strings. You do not
+declare overridable methods. `spliceClosure` uses the same property policy plus Closure DCE. The why is on
 **Production minify**.
 
 `.extern` is only for a library Closure cannot compile. It is not required for class components.
