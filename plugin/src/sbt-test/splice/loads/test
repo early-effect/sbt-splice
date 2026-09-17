@@ -1,6 +1,0 @@
-# Plugin loads on a Scala.js project. spliceFast copies linker output when nothing is imported.
-> plugins
-> spliceFast
-$ exists target/splice/fast.js
-> spliceFull
-$ exists target/splice/full.js

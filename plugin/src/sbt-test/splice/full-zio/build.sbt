@@ -1,4 +1,4 @@
-scalaVersion := "3.8.4"
+scalaVersion := "3.9.0"
 
 enablePlugins(ScalaJSPlugin)
 
@@ -29,7 +29,7 @@ lazy val es = project
   .in(file("es"))
   .enablePlugins(ScalaJSPlugin)
   .settings(
-    scalaVersion                    := "3.8.4",
+    scalaVersion                    := "3.9.0",
     scalaJSUseMainModuleInitializer := true,
     libraryDependencies ++= Seq(
       "dev.zio"           %% "zio"             % "2.1.26",

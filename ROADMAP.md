@@ -40,7 +40,7 @@ an ascent example) still follow publish. See §6.
 
 ## Stack and style
 
-**sbt 2 only. Scala 3 only.** No sbt 1 artifact, no Scala 2. The published plugin is `_sbt2_3`. `project/build.properties` is sbt 2.x; `scalaVersion` is Scala 3.8. Do not keep a 1.x code path "for compatibility."
+**sbt 2 only. Scala 3 only.** No sbt 1 artifact, no Scala 2. The published plugin is `_sbt2_3`. `project/build.properties` is sbt 2.x; `scalaVersion` is Scala 3.9. Do not keep a 1.x code path "for compatibility."
 
 | Piece | Role |
 |---|---|
@@ -66,7 +66,7 @@ Write the interesting logic in ZIO. Do not dump a procedural script into `build.
 
 ## 2. Constraints
 
-- **sbt 2 + Scala 3.8, early-semver.** Same publish identity as sbt-zipx / sbt-specular: `organization := "rocks.earlyeffect"`, `organizationName := "Early Effect"`, `versionScheme := Some("early-semver")`, zipx-generated CI (`ZipxCentral.release`, `ZipxDocs.pages`), `usePgpKeyHex(sys.env.getOrElse("PGP_KEY_HEX", "MISSING_KEY_HEX"))`. Publishing is CI-only. No hand-written `release.yml`.
+- **sbt 2 + Scala 3.9, early-semver.** Same publish identity as sbt-zipx / sbt-specular: `organization := "rocks.earlyeffect"`, `organizationName := "Early Effect"`, `versionScheme := Some("early-semver")`, zipx-generated CI (`ZipxCentral.release`, `ZipxDocs.pages`), `usePgpKeyHex(sys.env.getOrElse("PGP_KEY_HEX", "MISSING_KEY_HEX"))`. Publishing is CI-only. No hand-written `release.yml`.
 - **JDK 21+ to run `spliceClosure`.** Our Closure pin (`v20260726`) requires Java 21. `spliceFull` (pinned native esbuild) does not. This repo's zipx image is JDK 25. `spliceFast` does not minify.
 - **Zero Node.** The plugin and its tests never spawn Node. Scripted tests must pass with Node absent from `PATH`. No jsdom, no Playwright, no `node_modules` in this repo.
 - **Sealed JS.** Every spliced byte is pinned: a file in the repo, a Maven/WebJar checksum, or a CDN fetch with a content hash. Fail loud on unresolved specifiers. Never leave `import "foo"` in the output. Never run anything obtained from the fetch.
@@ -271,7 +271,7 @@ Each phase is independently shippable: compiles, tests, can be published.
 
 Checkable:
 
-- [x] sbt 2.x only (`project/build.properties`), Scala 3.8 only, `SbtPlugin`. No sbt 1 / Scala 2 cross.
+- [x] sbt 2.x only (`project/build.properties`), Scala 3.9 only, `SbtPlugin`. No sbt 1 / Scala 2 cross.
 - [x] `organization := "rocks.earlyeffect"`, `organizationName := "Early Effect"`, Apache-2.0, `versionScheme := Some("early-semver")`
 - [x] `homepage` / `scmInfo` point at `github.com/early-effect/sbt-splice`
 - [x] zipx: latest `sbt-zipx` from Central, `zipxJavaVersion := JdkVersion("25")`, parallel Verify (`fmt` / `workflow-check` / `advisories` / `test` with `testFull` and `scripted`), `ZipxCentral.release`, `ZipxDocs.pages`

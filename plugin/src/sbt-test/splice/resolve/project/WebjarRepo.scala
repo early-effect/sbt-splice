@@ -1,7 +1,7 @@
 import sbt.*
 
 import java.nio.charset.StandardCharsets
-import java.nio.file.{Files, Paths}
+import java.nio.file.Files
 import java.util.jar.{JarEntry, JarOutputStream}
 
 /** Tiny org.webjars.npm:foo:1.0.0 jar for scripted, no Central. */

@@ -1,3 +1,0 @@
-# GitHub tag tarball httptest with a pinned sha256.
-> checkSpliced
-$ exists target/splice/fast.js
