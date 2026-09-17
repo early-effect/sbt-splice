@@ -21,20 +21,22 @@ checksum you wrote down). Then `spliceFast` (development) or `spliceFull` (produ
 file you can put in a `<script>` tag.
 
 If the program has no npm imports, leave `spliceLibs` empty. `spliceFull` is still the Node-free production
-bundle (Scala.js minify, then Closure). `NoModule` is the natural linker kind in that case.
+bundle (Scala.js minify, then esbuild minify). `NoModule` is the natural linker kind in that case.
 """,
     section("Fast vs full")(
       md"""
-`spliceFast` is the development build: readable enough, usually seconds. `spliceFull` is the production build:
-Scala.js minify, then **Closure** (a JVM minifier) so the file is small. That pass runs even when `spliceLibs` is
-empty. Vanilla Scala.js `fastLinkJS` / `fullLinkJS` are unchanged; splice writes its own output next to them.
+`spliceFast` is the development build: concat, usually seconds. `spliceFull` is the production build: Scala.js
+minify, then pinned native esbuild so the file is small. That pass runs even when `spliceLibs` is empty. `spliceClosure` is
+optional Closure advanced. Vanilla Scala.js `fastLinkJS` / `fullLinkJS` are unchanged; splice writes its own output
+next to them.
 """,
       exampleValue {
-        List("spliceFast" -> "development", "spliceFull" -> "production + Closure")
+        List("spliceFast" -> "development", "spliceFull" -> "production minify", "spliceClosure" -> "optional Closure")
       }.assert { pairs =>
         assertTrue(
           pairs.head._1 == "spliceFast",
-          pairs.last._1 == "spliceFull",
+          pairs(1)._1 == "spliceFull",
+          pairs.last._1 == "spliceClosure",
         )
       },
     ),
@@ -44,8 +46,7 @@ Skip this note if you are not coming from webpack, Vite, or npm. Those tools sta
 `node_modules` tree. Splice does not. It never runs npm, never reads `package.json`, and never leaves `import "preact"`
 for a bundler to fix. If you already have a Node pipeline, splice is a different path, not a plugin for that pipeline.
 
-The production minify story (Scala.js minify, then JVM Closure with JS property names left alone, vs Vite) is on
-**Production minify**.
+The production minify story (Scala.js minify, then pinned native esbuild, vs optional Closure) is on **Production minify**.
 """
     ),
   )

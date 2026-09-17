@@ -8,7 +8,7 @@ scalaJSLinkerConfig ~= { _.withModuleKind(ModuleKind.ESModule) }
 spliceLibs += Splice.file("widget", baseDirectory.value / "vendor" / "widget.js")
 
 lazy val checkClass =
-  taskKey[Unit]("Eval spliceFast and spliceFull of a Scala.js class-component override and setState")
+  taskKey[Unit]("Eval spliceFast, spliceFull, and spliceClosure of a Scala.js class-component override")
 
 checkClass := Def.uncached {
   val expected                            = """STATE:{"v":"from-will-mount"}|OVERRIDE_RENDER|OVERRIDE_DID_MOUNT"""
@@ -21,4 +21,5 @@ checkClass := Def.uncached {
   }
   check("spliceFast", spliceFast.value)
   check("spliceFull", spliceFull.value)
+  check("spliceClosure", spliceClosure.value)
 }

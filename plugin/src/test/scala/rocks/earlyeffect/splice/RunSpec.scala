@@ -93,7 +93,7 @@ object RunSpec extends ZIOSpecDefault:
               linker = List(LinkerFile("main.js", linker)),
               libs = Map("preact" -> js),
               output = out,
-              optimize = true,
+              minify = Minify.Closure,
             )
           )
           body <- ZIO.attempt(Files.readString(out))
@@ -122,7 +122,7 @@ object RunSpec extends ZIOSpecDefault:
               ),
               libs = Map("preact" -> js),
               output = out,
-              optimize = true,
+              minify = Minify.Closure,
             )
           )
           body <- ZIO.attempt(Files.readString(out))
