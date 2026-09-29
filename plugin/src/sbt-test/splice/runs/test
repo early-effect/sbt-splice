@@ -2,3 +2,7 @@
 > checkRuns
 $ exists target/splice/fast.js
 $ exists target/splice/full.js
+> shake/checkShake
+$ exists shake/target/splice/fast.js
+$ exists shake/target/splice/full.js
+$ exists shake/target/splice/closure.js

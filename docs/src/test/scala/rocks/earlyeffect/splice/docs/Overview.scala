@@ -24,26 +24,35 @@ the natural linker kind in that case.
 """,
     section("Fast vs full")(
       md"""
-`spliceFast` is development: concat, usually seconds. `spliceFull` is production: Scala.js minify, then pinned
-esbuild so the file is small. That pass runs even when `spliceLibs` is empty. `spliceClosure` is optional Closure
-advanced (unused-vendor DCE). Vanilla Scala.js `fastLinkJS` / `fullLinkJS` are unchanged; splice writes its own
-output next to them.
+`spliceFast` bundles the linker's own imports and stops there (development, `NODE_ENV` is `"development"`).
+`spliceFull` is that same bundle, minified (`NODE_ENV` is `"production"`). Source maps are on for fast and off for
+full and closure unless you turn them on. Empty `spliceLibs` stays a classic script, not an iife, and `spliceFull`
+still minifies it. `spliceClosure` is optional Closure advanced on Scala.js's output; unused library exports stay on
+that path. Vanilla `fastLinkJS` / `fullLinkJS` are unchanged. Splice writes `target/splice/fast.js`,
+`target/splice/full.js`, and `target/splice/closure.js`.
 """,
       exampleValue {
-        List("spliceFast" -> "development", "spliceFull" -> "production minify", "spliceClosure" -> "optional Closure")
+        List(
+          "spliceFast"    -> "bundle the linker's imports (development)",
+          "spliceFull"    -> "bundle and minify (production)",
+          "spliceClosure" -> "Closure on Scala.js; libraries are not shaken",
+        )
       }.assert { pairs =>
         assertTrue(
-          pairs.head._1 == "spliceFast",
-          pairs(1)._1 == "spliceFull",
-          pairs.last._1 == "spliceClosure",
+          pairs match
+            case ("spliceFast", _) :: ("spliceFull", _) :: ("spliceClosure", _) :: Nil => true
+            case _                                                                     => false
         )
       },
     ),
     section("If you already use Vite")(
       md"""
 You can drop Node from the Scala.js production path. Vite's minify leaves JS property names alone and keeps
-`class` / `super()`. So does `spliceFull`. What you do not get is Vite's ESM tree-shaker walking `node_modules`.
-Splice never reads `package.json`, never runs npm, and never leaves `import "preact"` for a bundler to fix.
+`class` / `super()`. So does `spliceFull`. esbuild also drops the ESM exports the linked program does not use,
+including an `import * as` when the program only reads some properties. Passing that module on as a value keeps
+them. Top-level side effects stay. An `export * as` inside a pinned file is not shaken (esbuild's limit). CommonJS
+is not promised to shrink. A library the linker never imports is absent. Splice does not walk `node_modules`, does
+not read `package.json`, does not run npm, and does not leave `import "preact"` for another bundler to fix.
 Libraries are sealed pins. The output is one `<script>` file.
 
 How that compares to Closure, and why property renaming stays off, is on **Production minify**.

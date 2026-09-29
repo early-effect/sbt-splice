@@ -11,11 +11,18 @@ import java.nio.file.{Files, Path, StandardCopyOption}
 import java.security.MessageDigest
 import scala.jdk.CollectionConverters.*
 import scala.util.Using
+import scala.util.matching.Regex
 
-/** Pinned native esbuild. Fetched through Coursier on first `spliceFull`, never committed. */
+/** Pinned native esbuild. `spliceFast` and `spliceFull` bundle the linker's own imports. `spliceClosure` still bundles
+  * each mapped library as a `__splice_*` namespace. Fetched through Coursier the first time a build needs it, never
+  * committed.
+  */
 object EsbuildNative:
 
   val Version: String = "0.28.2"
+
+  /** The global the library bundle is, whose members are the mapped libraries' namespaces. */
+  private[splice] val Libraries: String = "__splice_libs"
 
   final case class Pin(id: String, url: String, member: String, sha256: String, windows: Boolean)
 
@@ -49,18 +56,119 @@ object EsbuildNative:
 
   def optimize(js: String, cacheDir: Path, localOnly: Boolean): IO[SpliceError, String] =
     for
-      pin <- ZIO.fromEither(currentPin)
-      bin <- binary(pin, cacheDir, localOnly)
-      out <- run(bin, js)
+      pin     <- ZIO.fromEither(currentPin)
+      bin     <- binary(pin, cacheDir, localOnly)
+      outcome <- exec(bin, js, List("--minify", "--target=es2015"))
+      out     <- outcome match
+        case Outcome.Wrote(out, _, _)    => ZIO.succeed(out)
+        case Outcome.Failed(code, error) => ZIO.fail(SpliceError.Minify(s"esbuild exit $code\n$error"))
     yield out
 
-  def programDigest(
-      linker: List[LinkerFile],
-      libs: Map[String, Path],
-      output: Path,
-      extern: Set[String],
-      sourceMaps: Boolean,
-  ): String =
+  /** Bundles `entry` into one script that defines [[Libraries]]. Each bare specifier in `aliases` resolves to its file,
+    * so a library that imports another mapped library gets the same module. `process.env.NODE_ENV` reads as `env`.
+    */
+  def bundle(
+      entry: String,
+      aliases: Map[String, Path],
+      env: NodeEnv,
+      cacheDir: Path,
+      localOnly: Boolean,
+  ): IO[SpliceError, String] =
+    val args = List(
+      "--bundle",
+      "--format=iife",
+      s"--global-name=$Libraries",
+      "--platform=browser",
+      "--log-level=warning",
+      "--color=false",
+      "--log-override:empty-import-meta=error",
+      s"""--define:process.env.NODE_ENV="${env.value}"""",
+    ) ++ aliasArgs(aliases)
+    for
+      pin     <- ZIO.fromEither(currentPin)
+      bin     <- binary(pin, cacheDir, localOnly)
+      outcome <- exec(bin, entry, args)
+      out     <- outcome match
+        case Outcome.Wrote(out, _, _) => ZIO.succeed(out)
+        case Outcome.Failed(_, what)  => ZIO.fail(bundleError(what))
+    yield out
+    end for
+  end bundle
+
+  /** One linker file esbuild bundles into a classic script. `sourceMapAt` is where the map will be written, so its
+    * `sources` are relative to that file. `inputs` are the files esbuild read, absolute.
+    */
+  private[splice] final case class Entry(
+      js: String,
+      path: Option[Path],
+      label: String,
+      aliases: Map[String, Path],
+      env: NodeEnv,
+      minify: Boolean,
+      sourceMapAt: Option[Path],
+  )
+
+  private[splice] final case class Bundled(js: String, sourceMap: Option[String], inputs: List[Path])
+
+  def bundleEntry(entry: Entry, cacheDir: Path, localOnly: Boolean): IO[SpliceError, Bundled] =
+    val args =
+      List(
+        "--bundle",
+        "--format=iife",
+        "--platform=browser",
+        "--log-level=warning",
+        "--color=false",
+        "--log-override:empty-import-meta=error",
+        s"""--define:process.env.NODE_ENV="${entry.env.value}"""",
+      ) ++ (if entry.minify then List("--minify", "--target=es2015") else Nil)
+        ++ aliasArgs(entry.aliases)
+    val reported = entry.path.fold("in.js")(_.getFileName.toString)
+    for
+      pin     <- ZIO.fromEither(currentPin)
+      bin     <- binary(pin, cacheDir, localOnly)
+      outcome <- exec(bin, entry.js, args, entry.path, entry.sourceMapAt, metafile = true)
+      out     <- outcome match
+        case Outcome.Wrote(js, map, inputs) => ZIO.succeed(Bundled(js, map, inputs))
+        case Outcome.Failed(_, what)        => ZIO.fail(bundleError(what, reported, entry.label))
+    yield out
+    end for
+  end bundleEntry
+
+  /** The first error esbuild reported: an import it could not resolve, or anything else, with the file it named. An
+    * error in the generated entry is reported as `entryLabel`.
+    */
+  private[splice] def bundleError(
+      stderr: String,
+      entryName: String = "in.js",
+      entryLabel: String = "in.js",
+  ): SpliceError =
+    reports(stderr).headOption match
+      case None                   => SpliceError.Bundle(None, stderr.trim)
+      case Some(Report(text, at)) =>
+        val file = at.map(name => if name == entryName then entryLabel else name)
+        (text, file) match
+          case (couldNotResolve(spec), Some(where)) => SpliceError.Unresolved(spec, where)
+          case _                                    => SpliceError.Bundle(file, text)
+
+  /** One `[ERROR]` esbuild printed, and the file its location names. */
+  private final case class Report(text: String, file: Option[String])
+
+  private val errorMark: Regex       = """(?m)^(?:✘|X) \[ERROR\] """.r
+  private val location: Regex        = """\s+(.+?):\d+:\d+:\s*""".r
+  private val couldNotResolve: Regex = """Could not resolve "([^"]+)".*""".r
+
+  private val SourceMappingComment: Regex =
+    """(?m)^[ \t]*//[@#][ \t]+sourceMappingURL=\S+[ \t]*\r?\n?""".r
+
+  private def reports(stderr: String): List[Report] =
+    errorMark.split(stderr).toList.drop(1).map { block =>
+      val lines = block.linesIterator.toList
+      val file  = lines.drop(1).collectFirst { case location(path) => Path.of(path).getFileName.toString }
+      Report(lines.headOption.getOrElse("").trim, file)
+    }
+
+  /** Hashes what the minifier is given, so a change anywhere a library reaches rebuilds. */
+  def programDigest(libraries: String, linker: String, output: Path, sourceMaps: Boolean): String =
     val md                   = MessageDigest.getInstance("SHA-256")
     def add(s: String): Unit =
       md.update(s.getBytes(StandardCharsets.UTF_8))
@@ -69,18 +177,49 @@ object EsbuildNative:
     add(currentPin.map(_.id).getOrElse("unknown"))
     add(currentPin.map(_.sha256).getOrElse(""))
     add(output.toAbsolutePath.normalize.toString)
-    add("extern:" + extern.toList.sorted.mkString(","))
     add("maps:" + sourceMaps)
-    linker.sortBy(_.label).foreach { f =>
-      add(f.label)
-      add(f.contents)
-    }
-    libs.toList.sortBy(_._1).foreach { (spec, path) =>
-      add(spec)
-      md.update(Files.readAllBytes(path))
-    }
+    add(libraries)
+    add(linker)
     md.digest.map("%02x".format(_)).mkString
   end programDigest
+
+  /** Hashes the linker text and every file esbuild read, so a transitive edit misses the stamp. */
+  def bundleDigest(
+      linker: String,
+      aliases: Map[String, Path],
+      inputs: List[Path],
+      output: Path,
+      sourceMaps: Boolean,
+      minify: Boolean,
+      env: NodeEnv,
+  ): String =
+    val md                   = MessageDigest.getInstance("SHA-256")
+    def add(s: String): Unit =
+      md.update(s.getBytes(StandardCharsets.UTF_8))
+    add("bundle-entry")
+    add(Version)
+    add(currentPin.map(_.id).getOrElse("unknown"))
+    add(currentPin.map(_.sha256).getOrElse(""))
+    add(output.toAbsolutePath.normalize.toString)
+    add("maps:" + sourceMaps)
+    add("minify:" + minify)
+    add(env.value)
+    add(linker)
+    aliases.toList.sortBy(_._1).foreach { (spec, path) =>
+      add(spec)
+      add(path.toAbsolutePath.normalize.toString)
+    }
+    inputs.map(_.toAbsolutePath.normalize).sortBy(_.toString).foreach { path =>
+      add(path.toString)
+      add(Resolve.sha256(path))
+    }
+    md.digest.map("%02x".format(_)).mkString
+  end bundleDigest
+
+  private def aliasArgs(aliases: Map[String, Path]): List[String] =
+    aliases.toList.sortBy(_._1).map { (spec, path) =>
+      s"--alias:$spec=${path.toAbsolutePath.normalize}"
+    }
 
   private val pins: Map[String, Pin] =
     def tgz(id: String, member: String, sha: String, windows: Boolean) =
@@ -200,36 +339,100 @@ object EsbuildNative:
     ()
   end chmodX
 
-  private def run(bin: Path, js: String): IO[SpliceError, String] =
+  /** What one esbuild run left. `inputs` are the files `--metafile` listed, absolute, including any temporary entry. */
+  private enum Outcome:
+    case Wrote(js: String, sourceMap: Option[String], inputs: List[Path])
+    case Failed(code: Int, stderr: String)
+
+  /** Runs esbuild in a directory of its own that is gone afterwards. `entryPath` is bundled in place; otherwise `js` is
+    * written to `in.js`. `sourceMapAt` is the final map path, so `sources` are rewritten relative to it before the
+    * temporary directory disappears.
+    */
+  private def exec(
+      bin: Path,
+      js: String,
+      args: List[String],
+      entryPath: Option[Path] = None,
+      sourceMapAt: Option[Path] = None,
+      metafile: Boolean = false,
+  ): IO[SpliceError, Outcome] =
     ZIO.acquireReleaseWith(
       ZIO.attemptBlocking(Files.createTempDirectory("sbt-splice-esbuild-")).mapError(e => SpliceError.Io(e.getMessage))
     )(dir => ZIO.attemptBlocking(deleteRecursively(dir)).ignore) { dir =>
-      ZIO.attemptBlockingInterrupt(runProcess(bin, dir, js)).mapError(e => SpliceError.Minify(e.getMessage)).absolve
+      ZIO
+        .attemptBlockingInterrupt(execIn(bin, dir, js, args, entryPath, sourceMapAt, metafile))
+        .mapError(e => SpliceError.Io(s"esbuild: ${e.getMessage}"))
     }
 
-  private def runProcess(bin: Path, dir: Path, js: String): Either[SpliceError, String] =
-    val in  = dir.resolve("in.js")
+  private def execIn(
+      bin: Path,
+      dir: Path,
+      js: String,
+      args: List[String],
+      entryPath: Option[Path],
+      sourceMapAt: Option[Path],
+      metafile: Boolean,
+  ): Outcome =
+    val entryAbs = entryPath.map(_.toAbsolutePath.normalize)
+    val hidden   = entryAbs.flatMap(hideSourceMappingComment)
+    val entry    = entryAbs match
+      case Some(path) => path.toString
+      case None       =>
+        Files.writeString(dir.resolve("in.js"), js, StandardCharsets.UTF_8)
+        "in.js"
+    val flags =
+      (if sourceMapAt.isDefined then List("--sourcemap=external") else Nil) ++
+        (if metafile then List("--metafile=meta.json") else Nil)
     val out = dir.resolve("out.js")
-    Files.writeString(in, js, StandardCharsets.UTF_8)
-    val pb = new ProcessBuilder(
-      bin.toAbsolutePath.toString,
-      "in.js",
-      "--minify",
-      "--outfile=out.js",
-      "--target=es2015",
-    )
+    val pb  = new ProcessBuilder((bin.toAbsolutePath.toString :: entry :: (args ++ flags)) :+ "--outfile=out.js"*)
     pb.directory(dir.toFile)
     pb.redirectInput(ProcessBuilder.Redirect.INHERIT)
-    val proc = pb.start()
     try
-      val err  = proc.getErrorStream.readAllBytes()
-      val code = proc.waitFor()
-      if code != 0 then Left(SpliceError.Minify(s"esbuild exit $code\n${String(err, StandardCharsets.UTF_8)}"))
-      else if !Files.isRegularFile(out) then
-        Left(SpliceError.Minify(s"esbuild wrote no out.js\n${String(err, StandardCharsets.UTF_8)}"))
-      else Right(Files.readString(out, StandardCharsets.UTF_8))
-    finally proc.destroyForcibly()
-  end runProcess
+      val proc = pb.start()
+      try
+        val err  = String(proc.getErrorStream.readAllBytes(), StandardCharsets.UTF_8)
+        val code = proc.waitFor()
+        if code != 0 then Outcome.Failed(code, err)
+        else if !Files.isRegularFile(out) then Outcome.Failed(code, s"esbuild wrote no out.js\n$err")
+        else
+          val written = Files.readString(out, StandardCharsets.UTF_8)
+          val map     = sourceMapAt.map { dest =>
+            SourceMaps.retarget(Files.readString(dir.resolve("out.js.map"), StandardCharsets.UTF_8), dir, dest)
+          }
+          val inputs =
+            if metafile then
+              JsonText
+                .objectKeys(Files.readString(dir.resolve("meta.json"), StandardCharsets.UTF_8), "inputs")
+                .map { key =>
+                  val path = Path.of(key)
+                  if path.isAbsolute then path.normalize else dir.resolve(key).normalize
+                }
+            else Nil
+          Outcome.Wrote(written, map, inputs)
+        end if
+      finally proc.destroyForcibly()
+      end try
+    finally restoreSourceMappingComment(entryAbs, hidden)
+    end try
+  end execIn
+
+  /** Text to put back when `path` carried a source-map comment. esbuild follows that comment and records its sources.
+    * With the comment gone, the bundle map names this file.
+    */
+  private def hideSourceMappingComment(path: Path): Option[String] =
+    val original = Files.readString(path, StandardCharsets.UTF_8)
+    val stripped = SourceMappingComment.replaceAllIn(original, "")
+    if stripped == original then None
+    else
+      Files.writeString(path, stripped, StandardCharsets.UTF_8)
+      Some(original)
+
+  private def restoreSourceMappingComment(path: Option[Path], hidden: Option[String]): Unit =
+    (path, hidden) match
+      case (Some(file), Some(original)) =>
+        Files.writeString(file, original, StandardCharsets.UTF_8)
+        ()
+      case _ => ()
 
   private def deleteRecursively(path: Path): Unit =
     if Files.isDirectory(path) then

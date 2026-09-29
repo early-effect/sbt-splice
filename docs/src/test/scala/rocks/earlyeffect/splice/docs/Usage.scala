@@ -26,9 +26,10 @@ the classpath. Use `ModuleKind.ESModule` (or CommonJS) when you have `@JSImport`
     section("Scala-only (no npm imports)")(
       md"""
 Leave `spliceLibs` empty. `spliceFast` and `spliceFull` still write `target/splice/fast.js` and
-`target/splice/full.js`. You still do not install Node or Vite. `spliceFull` is the production bundle
-(Scala.js minify, then pinned esbuild). It stubs Node-shaped free-vars (starting with `process`) so
-isomorphic Scala.js such as ZIO `System.env` / exit works without Node.
+`target/splice/full.js`. That file stays a classic script: it is not wrapped in an iife. You do not install Node,
+and the plugin does not run Node either. `spliceFull` minifies with the pinned esbuild. `spliceClosure` stubs
+`process` (`env`, `exitCode`, `browser`) so ZIO-shaped `System.env` / exit can run in a browser. When a mapped
+library reads `process.env.NODE_ENV`, `spliceFast` sets `"development"` and `spliceFull` sets `"production"`.
 
 ```scala
 enablePlugins(ScalaJSPlugin)
@@ -76,34 +77,42 @@ spliceLibs += Splice.github("foo", "owner/repo", "1.2.3", "dist/foo.js")
 - **GitHub pin:** `owner/repo`, an exact tag, and a path inside that tag's tarball. **sha256** pins the tarball. Add
   `Splice.github`. A 404 retries the `v`-prefixed tag.
 
-CDN and GitHub fetches go through Coursier (the same cache sbt uses for jars). So does the pinned esbuild
-binary on first `spliceFull`. The plugin never runs npm and never asks you to brew-install esbuild.
+A sha256 mismatch fails the task. CDN and GitHub fetches go through Coursier (the same cache sbt uses for jars).
+So does the pinned esbuild binary, the first time a build needs it. The plugin never runs npm, never reads
+`package.json`, and never asks you to install esbuild.
 """
     ),
     section("Tasks")(
       md"""
-- `spliceFast` writes the development file (`target/splice/fast.js` by default). Source maps are on
-  (`spliceFast / spliceSourceMaps`). Concat only.
-- `spliceFull` writes the production file (`target/splice/full.js`), then minifies with a pinned native esbuild for
-  this OS/arch (Coursier fetch, sha256). Same kind of minify as Vite: locals and whitespace, not JS property names.
-  First use downloads the binary. After that it is a cache hit. Source maps are off by default. This is the
-  production task. It runs even when `spliceLibs` is empty.
-- `spliceClosure` is optional Closure advanced (`target/splice/closure.js`). Use it when you want unused-vendor DCE
-  that minify will not do. Closure needs **JDK 21+**.
+- `spliceFast` writes `target/splice/fast.js`. It links, then esbuild bundles the linker's own imports
+  (`NODE_ENV` `"development"`). Nothing is minified. Source maps are on (`spliceFast / spliceSourceMaps`).
+- `spliceFull` writes `target/splice/full.js`. Same bundle, plus minify, in one esbuild run (`NODE_ENV`
+  `"production"`). Locals and whitespace shrink. JS property names stay. Source maps are off unless you set
+  `spliceFull / spliceSourceMaps`. This is the production task. Empty `spliceLibs` still minifies, and that output
+  stays a classic script.
+- `spliceClosure` writes `target/splice/closure.js`. It links with mapped imports rewritten to `__splice_*` globals,
+  then Closure advanced on the Scala.js output only. The library prefix is not shaken, so unused library exports
+  stay and this file can be larger than `spliceFull` on that axis. JDK 21+ for this task only. Property renaming
+  stays off. Source maps are off unless you set `spliceClosure / spliceSourceMaps`.
 
-`.extern` on a `spliceLibs` entry is a Closure hatch: `spliceFast` / `spliceFull` still include the library;
-`spliceClosure` does not feed that chunk to advanced mode. Vendor files may be ESM, CJS, or UMD. AMD-only
-`define()`, `export * from`, and `import.meta` fail the task.
+The module initializer runs. An `export` from the Scala.js file is not copied onto `window`.
+
+esbuild drops the ESM exports that import does not use, including `import * as` when the program only touches some
+properties. Passing the module as a value keeps them. Top-level side effects stay. `export * as` inside a pinned
+file is not shaken. CommonJS is not promised to shrink. A mapped library the linker never imports is absent.
+
+Vendor files may be ESM, CommonJS, or UMD, and may import each other, re-export (`export * from` included), or import
+for side effects. These fail the task: an unmapped specifier (the message names it and the file), a library that
+reads `import.meta`, esbuild unable to bundle, Closure unable to parse the Scala.js output, and more than one linker
+file on `spliceFast` or `spliceFull` when a library is mapped. Empty `spliceLibs` still concatenates. So does
+`spliceClosure`.
 """
     ),
     section("Subclassing a spliced class")(
       md"""
 `spliceFull` minifies like Vite: locals and whitespace, not JS property names. A Scala.js subclass of a spliced
 class is `class extends $$superClass`. `render` / `setState` / `connectedCallback` stay those strings. You do not
-declare overridable methods. `spliceClosure` uses the same property policy plus Closure DCE. The why is on
-**Production minify**.
-
-`.extern` is only for a library Closure cannot compile. It is not required for class components.
+declare overridable methods. `spliceClosure` uses the same property policy. The why is on **Production minify**.
 """
     ),
   )

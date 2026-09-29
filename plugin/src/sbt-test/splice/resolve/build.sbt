@@ -7,8 +7,8 @@ def leftoverFoo(f: File): Unit =
   val t = IO.read(f)
   if (t.contains("""from "foo"""") || t.contains("""require("foo")"""))
     sys.error(s"leftover foo specifier in $f")
-  if (!t.contains("__splice_foo"))
-    sys.error(s"expected wrapped foo module in $f")
+  if (!t.contains("\"ok\""))
+    sys.error(s"expected the foo library body in $f")
   ()
 
 def importFoo = Def.settings(
@@ -119,8 +119,8 @@ lazy val maps = project
       if (!map.exists)
         sys.error(s"expected source map $map")
       val m = IO.read(map)
-      if (!m.contains("\"sections\"") || !m.contains("fast-link"))
-        sys.error(s"expected indexed map pointing at private-link output in $map")
+      if (!m.contains("\"sources\"") || !m.contains("fast-link") || m.contains("\"sections\""))
+        sys.error(s"expected an esbuild map whose sources name the linker output in $map")
       ()
     },
   )
