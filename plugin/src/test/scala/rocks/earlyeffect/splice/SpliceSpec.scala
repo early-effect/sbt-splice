@@ -245,6 +245,76 @@ object SpliceSpec extends ZIOSpecDefault:
             case _ => false
         )
       },
+      test("a library's side-effect import of a package nobody mapped is an unresolved specifier") {
+        for
+          dir <- tempDir
+          foo = dir.resolve("foo.js")
+          _   <- write(foo, "import \"polyfill\";\nexport function greet() { return \"ok\"; }\n")
+          err <- Splice
+            .run(
+              SpliceInput(
+                linker = List(LinkerFile("main.js", "const Foo = __splice_foo;\n")),
+                libs = Map("foo" -> foo),
+                output = dir.resolve("splice.js"),
+              )
+            )
+            .flip
+        yield assertTrue(err == SpliceError.Unresolved("polyfill", "foo.js"))
+      },
+      test("a library's side-effect import runs before the library") {
+        for
+          dir <- tempDir
+          foo  = dir.resolve("foo.js")
+          side = dir.resolve("side.js")
+          _ <- write(side, "globalThis.sideRan = \"yes\";\n")
+          _ <- write(foo, "import \"./side.js\";\nexport function greet() { return globalThis.sideRan; }\n")
+          out = dir.resolve("splice.js")
+          _ <- Splice.run(
+            SpliceInput(
+              linker = List(
+                LinkerFile(
+                  "main.js",
+                  """const Foo = __splice_foo;
+                    |document.getElementById("out").textContent = Foo.greet();
+                    |""".stripMargin,
+                )
+              ),
+              libs = Map("foo" -> foo),
+              output = out,
+            )
+          )
+          body <- ZIO.attempt(Files.readString(out))
+        yield assertTrue(
+          !body.contains("import"),
+          JsHost.evalExpr(body, "document.getElementById('out').textContent") == "yes",
+        )
+      },
+      test("linker output whose strings say from splices as it links") {
+        for
+          dir <- tempDir
+          out = dir.resolve("splice.js")
+          _ <- Splice.run(
+            SpliceInput(
+              linker = List(
+                LinkerFile(
+                  "main.js",
+                  """const m = ("Unable to obtain LocalDate from " + 1) + " from here";
+                    |document.getElementById("out").textContent = m;
+                    |""".stripMargin,
+                )
+              ),
+              libs = Map.empty,
+              output = out,
+            )
+          )
+          body <- ZIO.attempt(Files.readString(out))
+        yield assertTrue(
+          JsHost.evalExpr(
+            body,
+            "document.getElementById('out').textContent",
+          ) == "Unable to obtain LocalDate from 1 from here"
+        )
+      },
       test("wraps CJS without rewriting exports and the binding is callable") {
         for
           dir <- tempDir

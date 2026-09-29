@@ -3,11 +3,16 @@ package rocks.earlyeffect.splice
 import java.util.regex.Matcher
 import scala.util.matching.Regex
 
-/** Find and rewrite bare / relative module specifiers. No JS parser: Scala.js import lines are regular. */
+/** Find and rewrite bare / relative module specifiers. No JS parser: Scala.js import lines are regular, whole
+  * statements at the start of a line, and that is the form this reads.
+  */
 object JsModules:
 
-  private val fromPat: Regex    = """from\s+(['"])([^'"]+)\1""".r
-  private val requirePat: Regex = """require\s*\(\s*(['"])([^'"]+)\1\s*\)""".r
+  // An import or re-export statement: it starts a line, and nothing between its keyword and its specifier is a quote or
+  // a `;`, so a string that says "from" is part of some other statement.
+  private val fromPat: Regex       = """(?m)^\s*(?:import|export)\s[^'";]*?\bfrom\s*(['"])([^'"]+)\1""".r
+  private val sideEffectPat: Regex = """(?m)^\s*import\s*(['"])([^'"]+)\1""".r
+  private val requirePat: Regex    = """require\s*\(\s*(['"])([^'"]+)\1\s*\)""".r
   // Bindings may be `$i_foo` (Scala.js). `\S+` avoids a `$` in the regex source.
   private val nsImport: Regex =
     """(?m)^import\s+\*\s+as\s+(\S+)\s+from\s+(['"])([^'"]+)\2\s*;?\s*$""".r
@@ -15,6 +20,8 @@ object JsModules:
     """(?m)^import\s+(\S+)\s+from\s+(['"])([^'"]+)\2\s*;?\s*$""".r
   private val namedImport: Regex =
     """(?m)^import\s+\{([^}]+)\}\s+from\s+(['"])([^'"]+)\2\s*;?\s*$""".r
+  private val sideEffectImport: Regex =
+    """(?m)^import\s*(['"])([^'"]+)\1[ \t]*;?""".r
 
   def isBare(specifier: String): Boolean =
     specifier.nonEmpty &&
@@ -34,6 +41,7 @@ object JsModules:
 
   def specifiers(js: String): List[String] =
     fromPat.findAllMatchIn(js).map(_.group(2)).toList ++
+      sideEffectPat.findAllMatchIn(js).map(_.group(2)).toList ++
       requirePat.findAllMatchIn(js).map(_.group(2)).toList
 
   def rewrite(js: String, modules: Map[String, String]): String =
@@ -67,10 +75,14 @@ object JsModules:
       modules.get(m.group(2)) match
         case Some(id) => q(id)
         case None     => q(m.matched)
+    // A spliced module ran where it was spliced in, ahead of its importer, so importing it for effect is nothing.
+    def sideEffectOf(m: Regex.Match): String =
+      if modules.contains(m.group(2)) then "" else q(m.matched)
     val named       = namedImport.replaceAllIn(js, namedOf)
     val withNs      = nsImport.replaceAllIn(named, nsOf)
     val withDefault = defaultImport.replaceAllIn(withNs, defaultOf)
-    requirePat.replaceAllIn(withDefault, requireOf)
+    val withEffects = sideEffectImport.replaceAllIn(withDefault, sideEffectOf)
+    requirePat.replaceAllIn(withEffects, requireOf)
   end rewrite
 
   def leftoverBare(js: String, mapped: Iterable[String]): List[String] =
