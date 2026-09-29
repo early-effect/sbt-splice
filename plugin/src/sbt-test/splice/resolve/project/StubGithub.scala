@@ -26,10 +26,10 @@ object StubGithub:
             ex.sendResponseHeaders(200, Archive.length)
             ex.getResponseBody.write(Archive)
           else ex.sendResponseHeaders(404, -1)
-        finally ex.close()
-      ,
+        finally ex.close(),
     )
     server.setExecutor(null)
     server.start()
     server.getAddress.getPort
+  end port
 end StubGithub

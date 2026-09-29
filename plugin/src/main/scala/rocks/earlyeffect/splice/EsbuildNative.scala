@@ -7,8 +7,10 @@ import zio.*
 import java.io.BufferedInputStream
 import java.nio.charset.StandardCharsets
 import java.nio.file.attribute.PosixFilePermission
-import java.nio.file.{Files, Path, StandardCopyOption}
+import java.nio.file.{AtomicMoveNotSupportedException, Files, Path, StandardCopyOption}
 import java.security.MessageDigest
+import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 import scala.jdk.CollectionConverters.*
 import scala.util.Using
 import scala.util.matching.Regex
@@ -265,40 +267,68 @@ object EsbuildNative:
     )
   end pins
 
+  /** One lock per destination. Parallel tests and parallel sbt tasks install the same pin, and a second `REPLACE`
+    * unlinks the binary while another fiber is hashing it or starting the process.
+    */
+  private val publishLocks = new ConcurrentHashMap[String, AnyRef]
+
   private def binary(pin: Pin, cacheDir: Path, localOnly: Boolean): IO[SpliceError, Path] =
     val dest = cacheDir.resolve("sbt-splice-esbuild").resolve(Version).resolve(pin.id).resolve(fileName(pin))
     val env  = ResolveEnv(Nil, cacheDir, localOnly, Map.empty, cacheDir)
     for
-      hit <- ZIO
-        .attemptBlocking(Files.isRegularFile(dest) && Resolve.sha256(dest) == pin.sha256)
-        .mapError(e => SpliceError.Io(e.getMessage))
-      _ <- ZIO.unless(hit) {
-        val tmp = dest.resolveSibling(s"${fileName(pin)}.${Thread.currentThread().threadId}.tmp")
-        for
-          tgz <- Resolve.fetchCached(pin.url, env)
-          _   <- extractMember(tgz, pin.member, tmp)
-          _   <- verify(tmp, pin)
-          _   <- ZIO.unless(pin.windows)(ZIO.attemptBlocking(chmodX(tmp)).mapError(e => SpliceError.Io(e.getMessage)))
-          _   <- ZIO
-            .attemptBlocking {
-              Files.createDirectories(dest.getParent)
-              Files.move(tmp, dest, StandardCopyOption.REPLACE_EXISTING)
-            }
-            .mapError(e => SpliceError.Io(e.getMessage))
-        yield ()
-        end for
-      }
-      _ <- verify(dest, pin)
+      hit <- ZIO.attemptBlocking(matches(dest, pin)).mapError(e => SpliceError.Io(e.getMessage))
+      _   <- ZIO.unless(hit)(stage(pin, dest, env))
+      _   <- verify(dest, pin)
     yield dest
-    end for
   end binary
+
+  private def stage(pin: Pin, dest: Path, env: ResolveEnv): IO[SpliceError, Unit] =
+    ZIO.acquireReleaseWith(
+      ZIO.succeed(dest.resolveSibling(s"${fileName(pin)}.${UUID.randomUUID}.tmp"))
+    )(tmp => ZIO.attemptBlocking(Files.deleteIfExists(tmp)).ignore) { tmp =>
+      for
+        tgz <- Resolve.fetchCached(pin.url, env)
+        _   <- extractMember(tgz, pin.member, tmp)
+        _   <- verify(tmp, pin)
+        _   <- ZIO.unless(pin.windows)(ZIO.attemptBlocking(chmodX(tmp)).mapError(e => SpliceError.Io(e.getMessage)))
+        _   <- publish(tmp, dest, pin)
+      yield ()
+    }
+
+  /** Installs `tmp` as `dest`, unless `dest` already matches `pin`. The loser deletes `tmp` and leaves the live binary
+    * in place.
+    */
+  private def publish(tmp: Path, dest: Path, pin: Pin): IO[SpliceError, Unit] =
+    val lock = publishLocks.computeIfAbsent(dest.toAbsolutePath.normalize.toString, _ => new Object)
+    ZIO
+      .attemptBlocking {
+        lock.synchronized {
+          if matches(dest, pin) then Files.deleteIfExists(tmp)
+          else
+            Files.createDirectories(dest.getParent)
+            try Files.move(tmp, dest, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
+            catch
+              case _: AtomicMoveNotSupportedException =>
+                Files.move(tmp, dest, StandardCopyOption.REPLACE_EXISTING)
+          ()
+        }
+      }
+      .mapError(e => SpliceError.Io(e.getMessage))
+  end publish
+
+  private def matches(dest: Path, pin: Pin): Boolean =
+    Files.isRegularFile(dest) && Resolve.sha256(dest) == pin.sha256
 
   private def fileName(pin: Pin): String = if pin.windows then "esbuild.exe" else "esbuild"
 
   private def verify(dest: Path, pin: Pin): IO[SpliceError, Unit] =
-    val actual = Resolve.sha256(dest)
-    if actual == pin.sha256 then ZIO.unit
-    else ZIO.fail(SpliceError.ChecksumMismatch(s"esbuild@${pin.id}-$Version", pin.sha256, actual))
+    ZIO
+      .attemptBlocking(Resolve.sha256(dest))
+      .mapError(e => SpliceError.Io(e.getMessage))
+      .flatMap { actual =>
+        if actual == pin.sha256 then ZIO.unit
+        else ZIO.fail(SpliceError.ChecksumMismatch(s"esbuild@${pin.id}-$Version", pin.sha256, actual))
+      }
 
   private def extractMember(archive: Path, member: String, dest: Path): IO[SpliceError, Unit] =
     ZIO

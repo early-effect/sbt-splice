@@ -27,4 +27,5 @@ object WebjarRepo:
         |</project>
         |""".stripMargin,
     )
+  end write
 end WebjarRepo

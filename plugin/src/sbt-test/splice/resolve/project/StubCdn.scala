@@ -27,10 +27,10 @@ object StubCdn:
             ex.sendResponseHeaders(200, bytes.length)
             ex.getResponseBody.write(bytes)
           else ex.sendResponseHeaders(404, -1)
-        finally ex.close()
-      ,
+        finally ex.close(),
     )
     server.setExecutor(null)
     server.start()
     server.getAddress.getPort
+  end port
 end StubCdn
