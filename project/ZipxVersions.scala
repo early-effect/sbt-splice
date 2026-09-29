@@ -32,24 +32,24 @@ object MyVersions extends ZipxVersions:
   val graalJs: Lib       = Lib("org.graalvm.js", "js-language", "25.2.4").java.test
   val graalTruffle: Lib  = Lib("org.graalvm.truffle", "truffle-runtime", "25.2.4").java.test
 
-  val specular: Lib        = Lib("rocks.earlyeffect", "specular-core", "0.14.2")
+  val specular: Lib        = Lib("rocks.earlyeffect", "specular-core", "0.18.1")
   val specularZioTest: Lib = specular.mod("specular-zio-test").test
   val specularTheme: Lib   = specular.mod("early-effect-docs-theme").test
 
-  val chekhovZioTest: Lib = Lib("rocks.earlyeffect", "chekhov-zio-test", "0.1.1").test
+  val chekhovZioTest: Lib = Lib("rocks.earlyeffect", "chekhov-zio-test", "0.1.2").test
   val chekhovDriver: Lib  = chekhovZioTest.mod("chekhov-driver")
 
   val scalafmt: Plugin       = Plugin("org.scalameta", "sbt-scalafmt", "2.6.2")
   val dynverCi: Plugin       = Plugin("rocks.earlyeffect", "sbt-dynver-ci", "0.2.3")
-  val specularPlugin: Plugin = Plugin("rocks.earlyeffect", "sbt-specular", "0.14.2")
-  val chekhovPlugin: Plugin  = Plugin("rocks.earlyeffect", "sbt-chekhov", "0.1.1")
+  val specularPlugin: Plugin = Plugin("rocks.earlyeffect", "sbt-specular", "0.18.1")
+  val chekhovPlugin: Plugin  = Plugin("rocks.earlyeffect", "sbt-chekhov", "0.1.2")
 
   val checkout: Action =
     Action("actions/checkout", "v7.0.1", sha = "3d3c42e5aac5ba805825da76410c181273ba90b1")
   val setupJava: Action =
     Action("actions/setup-java", "v6.0.1", sha = "de7274f081f381c8f8158605e0321c36c376e2e6")
   val setupSbt: Action =
-    Action("sbt/setup-sbt", "v1.5.9", sha = "82da71df4e122282484a99a8d70096bc2369dbd8")
+    Action("sbt/setup-sbt", "v1.5.11", sha = "6158cb0903b8ceeae04f830055f3155e1b6a5ad7")
   val setupNode: Action =
     Action("actions/setup-node", "v7.0.0", sha = "820762786026740c76f36085b0efc47a31fe5020")
   val cache: Action =
