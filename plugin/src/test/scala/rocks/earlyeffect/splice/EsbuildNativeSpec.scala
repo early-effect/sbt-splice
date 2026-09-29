@@ -3,7 +3,9 @@ package rocks.earlyeffect.splice
 import zio.test.*
 import zio.*
 
-import java.nio.file.Files
+import java.nio.file.{Files, Path}
+import java.util.Comparator
+import scala.util.Using
 
 object EsbuildNativeSpec extends ZIOSpecDefault:
 
@@ -62,6 +64,20 @@ object EsbuildNativeSpec extends ZIOSpecDefault:
         !body.contains("Error.call("),
       )
     },
+    test("parallel installs keep a readable binary") {
+      val callers = 12
+      for
+        dir <- tempDir
+        _   <- EsbuildNative.optimize(ProtocolFixtures.errorSubclass, dir, localOnly = false)
+        _   <- ZIO.attempt(deleteTree(dir.resolve("sbt-splice-esbuild")))
+        results <- ZIO.foreachPar(Chunk.fromIterable(1 to callers)) { _ =>
+          EsbuildNative.optimize(ProtocolFixtures.errorSubclass, dir, localOnly = false)
+        }
+      yield assertTrue(
+        results.size == callers,
+        results.forall(js => js.contains("extends Error") && !js.contains("Error.call(")),
+      )
+    },
     test("unknown host fails without fetching") {
       val err = EsbuildNative.pinFor("SerenityOS", "riscv64")
       assertTrue(
@@ -73,6 +89,13 @@ object EsbuildNativeSpec extends ZIOSpecDefault:
 
   private val FileCacheDir = coursier.cache.FileCache().location.toPath
 
-  private def tempDir: Task[java.nio.file.Path] =
+  private def tempDir: Task[Path] =
     ZIO.attempt(Files.createTempDirectory("sbt-splice-esbuild-spec-"))
+
+  /** Drops the extracted binary and leaves the Coursier tarball, so the next installs race on publish. */
+  private def deleteTree(root: Path): Unit =
+    if Files.exists(root) then
+      Using.resource(Files.walk(root)): walk =>
+        walk.sorted(Comparator.reverseOrder[Path]()).forEach(Files.delete(_))
+        ()
 end EsbuildNativeSpec
