@@ -9,20 +9,19 @@ object ClosureSpec extends ZIOSpecDefault:
 
   def spec =
     suite("Closure")(
-      test("programDigest is stable and changes when linker or vendor bytes change") {
-        for
-          dir <- tempDir
-          lib = dir.resolve("foo.js")
-          _ <- write(lib, "export const x = 1;")
-          out    = dir.resolve("full.js")
-          linker = List(LinkerFile("main.js", "const n = 1;"))
-          libs   = Map("foo" -> lib)
-          a      = Closure.programDigest(linker, libs, out)
-          b      = Closure.programDigest(linker, libs, out)
-          c      = Closure.programDigest(List(LinkerFile("main.js", "const n = 2;")), libs, out)
-          _ <- write(lib, "export const x = 2;")
-          d = Closure.programDigest(linker, libs, out)
-        yield assertTrue(a == b, a != c, a != d, a.length == 64)
+      test("programDigest is stable and changes when the libraries, the linker, or the output change") {
+        check(Gen.alphaNumericString, Gen.alphaNumericString) { (libraries, linker) =>
+          val out  = Path.of("full.js")
+          val same = Closure.programDigest(libraries, linker, out, sourceMaps = false)
+          assertTrue(
+            same == Closure.programDigest(libraries, linker, out, sourceMaps = false),
+            same != Closure.programDigest(libraries + "x", linker, out, sourceMaps = false),
+            same != Closure.programDigest(libraries, linker + "x", out, sourceMaps = false),
+            same != Closure.programDigest(libraries, linker, Path.of("other.js"), sourceMaps = false),
+            same != Closure.programDigest(libraries, linker, out, sourceMaps = true),
+            same.length == 64,
+          )
+        }
       },
       test("cacheHit is true only when stamp, digest, and output all match") {
         for

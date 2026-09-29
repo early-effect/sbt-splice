@@ -24,9 +24,9 @@ the natural linker kind in that case.
 """,
     section("Fast vs full")(
       md"""
-`spliceFast` is development: concat, usually seconds. `spliceFull` is production: Scala.js minify, then pinned
-esbuild so the file is small. That pass runs even when `spliceLibs` is empty. `spliceClosure` is optional Closure
-advanced (unused-vendor DCE). Vanilla Scala.js `fastLinkJS` / `fullLinkJS` are unchanged; splice writes its own
+`spliceFast` is development: the libraries bundled, nothing minified, usually seconds. `spliceFull` is production:
+Scala.js minify, then pinned esbuild so the file is small. That pass runs even when `spliceLibs` is empty.
+`spliceClosure` is optional Closure advanced on Scala.js's output. Vanilla Scala.js `fastLinkJS` / `fullLinkJS` are unchanged; splice writes its own
 output next to them.
 """,
       exampleValue {

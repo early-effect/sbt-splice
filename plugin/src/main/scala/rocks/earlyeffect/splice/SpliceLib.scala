@@ -8,23 +8,9 @@ enum SpliceLib derives CanEqual:
     case w: WebJar => w.spec
     case g: GitHub => g.spec
 
-  def isExtern: Boolean = this match
-    case f: File   => f.asExtern
-    case c: Cdn    => c.asExtern
-    case w: WebJar => w.asExtern
-    case g: GitHub => g.asExtern
-
-  /** Closure hatch: wrap and prepend for runtime, do not feed the body to advanced mode. */
-  def extern: SpliceLib = this match
-    case f: File   => f.copy(asExtern = true)
-    case c: Cdn    => c.copy(asExtern = true)
-    case w: WebJar => w.copy(asExtern = true)
-    case g: GitHub => g.copy(asExtern = true)
-
   case File(
       spec: String,
       file: java.io.File,
-      asExtern: Boolean = false,
   )
   case Cdn(
       spec: String,
@@ -32,7 +18,6 @@ enum SpliceLib derives CanEqual:
       version: String,
       path: String,
       sha256: Option[String],
-      asExtern: Boolean = false,
   )
   case WebJar(
       spec: String,
@@ -40,7 +25,6 @@ enum SpliceLib derives CanEqual:
       name: String,
       version: String,
       path: String,
-      asExtern: Boolean = false,
   )
   case GitHub(
       spec: String,
@@ -48,7 +32,6 @@ enum SpliceLib derives CanEqual:
       tag: String,
       path: String,
       sha256: Option[String],
-      asExtern: Boolean = false,
   )
 end SpliceLib
 

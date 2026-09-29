@@ -170,13 +170,8 @@ object Closure:
       }
   end optimize
 
-  def programDigest(
-      linker: List[LinkerFile],
-      libs: Map[String, Path],
-      output: Path,
-      extern: Set[String] = Set.empty,
-      sourceMaps: Boolean = false,
-  ): String =
+  /** Hashes what Closure is given, and how, so a change anywhere a library reaches rebuilds. */
+  def programDigest(libraries: String, linker: String, output: Path, sourceMaps: Boolean): String =
     val md                   = MessageDigest.getInstance("SHA-256")
     def add(s: String): Unit =
       md.update(s.getBytes(StandardCharsets.UTF_8))
@@ -186,16 +181,9 @@ object Closure:
     add(BrowserExterns)
     add(NodeStubs)
     add(output.toAbsolutePath.normalize.toString)
-    add("extern:" + extern.toList.sorted.mkString(","))
     add("maps:" + sourceMaps)
-    linker.sortBy(_.label).foreach { f =>
-      add(f.label)
-      add(f.contents)
-    }
-    libs.toList.sortBy(_._1).foreach { (spec, path) =>
-      add(spec)
-      md.update(Files.readAllBytes(path))
-    }
+    add(libraries)
+    add(linker)
     md.digest.map("%02x".format(_)).mkString
   end programDigest
 

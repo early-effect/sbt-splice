@@ -13,7 +13,7 @@ object SmokeSiteSpec extends ZIOSpecDefault:
           val js = Files.readString(Path.of("target/splice-smoke/fast.js"))
           assertTrue(
             Files.isRegularFile(Path.of("target/splice-smoke/index.html")),
-            js.contains("exports.default = function escapeStringRegexp"),
+            JsHost.evalExpr(js, "document.getElementById('out').textContent") == "hello\\?",
             !js.contains("""from "escape-string-regexp""""),
           )
         }

@@ -8,7 +8,7 @@ def leftoverFoo(f: File): Unit =
   if (t.contains("""from "foo"""") || t.contains("""require("foo")"""))
     sys.error(s"leftover foo specifier in $f")
   if (!t.contains("__splice_foo"))
-    sys.error(s"expected wrapped foo module in $f")
+    sys.error(s"expected the foo binding in $f")
   ()
 
 def importFoo = Def.settings(

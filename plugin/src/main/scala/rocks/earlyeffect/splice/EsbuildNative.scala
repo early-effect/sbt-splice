@@ -11,11 +11,17 @@ import java.nio.file.{Files, Path, StandardCopyOption}
 import java.security.MessageDigest
 import scala.jdk.CollectionConverters.*
 import scala.util.Using
+import scala.util.matching.Regex
 
-/** Pinned native esbuild. Fetched through Coursier on first `spliceFull`, never committed. */
+/** Pinned native esbuild, which bundles the mapped libraries and minifies `spliceFull`. Fetched through Coursier the
+  * first time a build needs it, never committed.
+  */
 object EsbuildNative:
 
   val Version: String = "0.28.2"
+
+  /** The global the library bundle is, whose members are the mapped libraries' namespaces. */
+  private[splice] val Libraries: String = "__splice_libs"
 
   final case class Pin(id: String, url: String, member: String, sha256: String, windows: Boolean)
 
@@ -49,18 +55,70 @@ object EsbuildNative:
 
   def optimize(js: String, cacheDir: Path, localOnly: Boolean): IO[SpliceError, String] =
     for
-      pin <- ZIO.fromEither(currentPin)
-      bin <- binary(pin, cacheDir, localOnly)
-      out <- run(bin, js)
+      pin     <- ZIO.fromEither(currentPin)
+      bin     <- binary(pin, cacheDir, localOnly)
+      outcome <- exec(bin, js, List("--minify", "--target=es2015"))
+      out     <- outcome match
+        case Outcome.Wrote(out)          => ZIO.succeed(out)
+        case Outcome.Failed(code, error) => ZIO.fail(SpliceError.Minify(s"esbuild exit $code\n$error"))
     yield out
 
-  def programDigest(
-      linker: List[LinkerFile],
-      libs: Map[String, Path],
-      output: Path,
-      extern: Set[String],
-      sourceMaps: Boolean,
-  ): String =
+  /** Bundles `entry` into one script that defines [[Libraries]]. Each bare specifier in `aliases` resolves to its file,
+    * so a library that imports another mapped library gets the same module. `process.env.NODE_ENV` reads as `env`.
+    */
+  def bundle(
+      entry: String,
+      aliases: Map[String, Path],
+      env: NodeEnv,
+      cacheDir: Path,
+      localOnly: Boolean,
+  ): IO[SpliceError, String] =
+    val args = List(
+      "--bundle",
+      "--format=iife",
+      s"--global-name=$Libraries",
+      "--platform=browser",
+      "--log-level=warning",
+      "--color=false",
+      "--log-override:empty-import-meta=error",
+      s"""--define:process.env.NODE_ENV="${env.value}"""",
+    ) ++ aliases.toList.sortBy(_._1).map((spec, path) => s"--alias:$spec=${path.toAbsolutePath.normalize}")
+    for
+      pin     <- ZIO.fromEither(currentPin)
+      bin     <- binary(pin, cacheDir, localOnly)
+      outcome <- exec(bin, entry, args)
+      out     <- outcome match
+        case Outcome.Wrote(out)      => ZIO.succeed(out)
+        case Outcome.Failed(_, what) => ZIO.fail(bundleError(what))
+    yield out
+    end for
+  end bundle
+
+  /** The first error esbuild reported: an import it could not resolve, or anything else, with the file it named. */
+  private[splice] def bundleError(stderr: String): SpliceError =
+    reports(stderr).headOption match
+      case None                   => SpliceError.Bundle(None, stderr.trim)
+      case Some(Report(text, at)) =>
+        (text, at) match
+          case (couldNotResolve(spec), Some(file)) => SpliceError.Unresolved(spec, file)
+          case _                                   => SpliceError.Bundle(at, text)
+
+  /** One `[ERROR]` esbuild printed, and the file its location names. */
+  private final case class Report(text: String, file: Option[String])
+
+  private val errorMark: Regex       = """(?m)^(?:✘|X) \[ERROR\] """.r
+  private val location: Regex        = """\s+(.+?):\d+:\d+:\s*""".r
+  private val couldNotResolve: Regex = """Could not resolve "([^"]+)".*""".r
+
+  private def reports(stderr: String): List[Report] =
+    errorMark.split(stderr).toList.drop(1).map { block =>
+      val lines = block.linesIterator.toList
+      val file  = lines.drop(1).collectFirst { case location(path) => Path.of(path).getFileName.toString }
+      Report(lines.headOption.getOrElse("").trim, file)
+    }
+
+  /** Hashes what the minifier is given, so a change anywhere a library reaches rebuilds. */
+  def programDigest(libraries: String, linker: String, output: Path, sourceMaps: Boolean): String =
     val md                   = MessageDigest.getInstance("SHA-256")
     def add(s: String): Unit =
       md.update(s.getBytes(StandardCharsets.UTF_8))
@@ -69,16 +127,9 @@ object EsbuildNative:
     add(currentPin.map(_.id).getOrElse("unknown"))
     add(currentPin.map(_.sha256).getOrElse(""))
     add(output.toAbsolutePath.normalize.toString)
-    add("extern:" + extern.toList.sorted.mkString(","))
     add("maps:" + sourceMaps)
-    linker.sortBy(_.label).foreach { f =>
-      add(f.label)
-      add(f.contents)
-    }
-    libs.toList.sortBy(_._1).foreach { (spec, path) =>
-      add(spec)
-      md.update(Files.readAllBytes(path))
-    }
+    add(libraries)
+    add(linker)
     md.digest.map("%02x".format(_)).mkString
   end programDigest
 
@@ -200,36 +251,37 @@ object EsbuildNative:
     ()
   end chmodX
 
-  private def run(bin: Path, js: String): IO[SpliceError, String] =
+  /** What one esbuild run left: the file it wrote, or its exit code and what it said. */
+  private enum Outcome:
+    case Wrote(js: String)
+    case Failed(code: Int, stderr: String)
+
+  /** Runs esbuild on `js` with `args`, in a directory of its own that is gone afterwards. */
+  private def exec(bin: Path, js: String, args: List[String]): IO[SpliceError, Outcome] =
     ZIO.acquireReleaseWith(
       ZIO.attemptBlocking(Files.createTempDirectory("sbt-splice-esbuild-")).mapError(e => SpliceError.Io(e.getMessage))
     )(dir => ZIO.attemptBlocking(deleteRecursively(dir)).ignore) { dir =>
-      ZIO.attemptBlockingInterrupt(runProcess(bin, dir, js)).mapError(e => SpliceError.Minify(e.getMessage)).absolve
+      ZIO
+        .attemptBlockingInterrupt(execIn(bin, dir, js, args))
+        .mapError(e => SpliceError.Io(s"esbuild: ${e.getMessage}"))
     }
 
-  private def runProcess(bin: Path, dir: Path, js: String): Either[SpliceError, String] =
+  private def execIn(bin: Path, dir: Path, js: String, args: List[String]): Outcome =
     val in  = dir.resolve("in.js")
     val out = dir.resolve("out.js")
     Files.writeString(in, js, StandardCharsets.UTF_8)
-    val pb = new ProcessBuilder(
-      bin.toAbsolutePath.toString,
-      "in.js",
-      "--minify",
-      "--outfile=out.js",
-      "--target=es2015",
-    )
+    val pb = new ProcessBuilder((bin.toAbsolutePath.toString :: "in.js" :: args) :+ "--outfile=out.js"*)
     pb.directory(dir.toFile)
     pb.redirectInput(ProcessBuilder.Redirect.INHERIT)
     val proc = pb.start()
     try
-      val err  = proc.getErrorStream.readAllBytes()
+      val err  = String(proc.getErrorStream.readAllBytes(), StandardCharsets.UTF_8)
       val code = proc.waitFor()
-      if code != 0 then Left(SpliceError.Minify(s"esbuild exit $code\n${String(err, StandardCharsets.UTF_8)}"))
-      else if !Files.isRegularFile(out) then
-        Left(SpliceError.Minify(s"esbuild wrote no out.js\n${String(err, StandardCharsets.UTF_8)}"))
-      else Right(Files.readString(out, StandardCharsets.UTF_8))
+      if code != 0 then Outcome.Failed(code, err)
+      else if !Files.isRegularFile(out) then Outcome.Failed(code, s"esbuild wrote no out.js\n$err")
+      else Outcome.Wrote(Files.readString(out, StandardCharsets.UTF_8))
     finally proc.destroyForcibly()
-  end runProcess
+  end execIn
 
   private def deleteRecursively(path: Path): Unit =
     if Files.isDirectory(path) then

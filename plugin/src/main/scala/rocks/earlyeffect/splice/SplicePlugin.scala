@@ -207,33 +207,20 @@ object SplicePlugin extends AutoPlugin:
       extractDir = extractDir,
     )
     val libMap = RunSplice(Splice.resolve(libs, env))
-    val extern = libs.collect { case l if l.isExtern => l.specifier }.toSet
-    val digest = minify match
-      case Minify.None    => None
-      case Minify.Esbuild => Some(EsbuildNative.programDigest(linker, libMap, out.toPath, extern, sourceMaps))
-      case Minify.Closure => Some(Closure.programDigest(linker, libMap, out.toPath, extern, sourceMaps))
-    val mapOut = if sourceMaps then Some(SourceMaps.mapPath(out.toPath)) else None
-    val hit    = digest.exists(d => cacheStamp.exists(s => Closure.cacheHit(s.toPath, d, out.toPath, mapOut)))
-    if !hit then
-      RunSplice(
-        Splice.run(
-          SpliceInput(
-            linker = linker,
-            libs = libMap,
-            output = out.toPath,
-            minify = minify,
-            extern = extern,
-            sourceMaps = sourceMaps,
-            cacheDir = cacheDir,
-            localOnly = localOnly,
-          )
+    RunSplice(
+      Splice.run(
+        SpliceInput(
+          linker = linker,
+          libs = libMap,
+          output = out.toPath,
+          minify = minify,
+          sourceMaps = sourceMaps,
+          cacheDir = cacheDir,
+          localOnly = localOnly,
+          cache = cacheStamp.map(_.toPath),
         )
       )
-      for
-        stamp <- cacheStamp
-        d     <- digest
-      do Closure.storeCache(stamp.toPath, d)
-    end if
+    )
     out
   end runSplice
 

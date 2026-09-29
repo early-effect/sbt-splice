@@ -83,27 +83,24 @@ binary on first `spliceFull`. The plugin never runs npm and never asks you to br
     section("Tasks")(
       md"""
 - `spliceFast` writes the development file (`target/splice/fast.js` by default). Source maps are on
-  (`spliceFast / spliceSourceMaps`). Concat only.
+  (`spliceFast / spliceSourceMaps`). esbuild bundles the mapped libraries; nothing is minified.
 - `spliceFull` writes the production file (`target/splice/full.js`), then minifies with a pinned native esbuild for
   this OS/arch (Coursier fetch, sha256). Same kind of minify as Vite: locals and whitespace, not JS property names.
   First use downloads the binary. After that it is a cache hit. Source maps are off by default. This is the
   production task. It runs even when `spliceLibs` is empty.
-- `spliceClosure` is optional Closure advanced (`target/splice/closure.js`). Use it when you want unused-vendor DCE
-  that minify will not do. Closure needs **JDK 21+**.
+- `spliceClosure` is optional Closure advanced on Scala.js's output (`target/splice/closure.js`). Closure needs
+  **JDK 21+**.
 
-`.extern` on a `spliceLibs` entry is a Closure hatch: `spliceFast` / `spliceFull` still include the library;
-`spliceClosure` does not feed that chunk to advanced mode. Vendor files may be ESM, CJS, or UMD. AMD-only
-`define()`, `export * from`, and `import.meta` fail the task.
+Vendor files may be ESM, CommonJS, or UMD, and may import each other, re-export (`export * from` included), or import
+for side effects. A library that reads `import.meta` fails the task, since a script has none. So does an import of a
+package no `spliceLibs` entry maps, naming the file that imports it.
 """
     ),
     section("Subclassing a spliced class")(
       md"""
 `spliceFull` minifies like Vite: locals and whitespace, not JS property names. A Scala.js subclass of a spliced
 class is `class extends $$superClass`. `render` / `setState` / `connectedCallback` stay those strings. You do not
-declare overridable methods. `spliceClosure` uses the same property policy plus Closure DCE. The why is on
-**Production minify**.
-
-`.extern` is only for a library Closure cannot compile. It is not required for class components.
+declare overridable methods. `spliceClosure` uses the same property policy. The why is on **Production minify**.
 """
     ),
   )

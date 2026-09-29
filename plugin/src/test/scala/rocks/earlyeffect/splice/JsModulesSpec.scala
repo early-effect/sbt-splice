@@ -6,7 +6,7 @@ object JsModulesSpec extends ZIOSpecDefault:
 
   def spec =
     suite("JsModules")(
-      test("treats package names as bare and relative paths as not") {
+      test("treats package names as bare, and paths and URLs as not") {
         assertTrue(
           JsModules.isBare("foo"),
           JsModules.isBare("escape-string-regexp"),
@@ -15,8 +15,6 @@ object JsModulesSpec extends ZIOSpecDefault:
           !JsModules.isBare("../x.js"),
           !JsModules.isBare("/abs.js"),
           !JsModules.isBare("https://example.com/x.js"),
-          JsModules.isRelative("./util.js"),
-          !JsModules.isRelative("foo"),
         )
       },
       test("finds each import statement's specifier, and the specifier a re-export names") {
@@ -46,47 +44,6 @@ object JsModulesSpec extends ZIOSpecDefault:
                |const s = 'import x from ' + "y";""".stripMargin
           assertTrue(JsModules.specifiers(js).isEmpty)
         }
-      },
-      test("rewrites a side-effect import to nothing, since the module already ran where it was spliced") {
-        val modules = Map("foo" -> "__splice_foo")
-        assertTrue(
-          JsModules.rewrite("import \"foo\";\nconst x = 1;", modules) == "\nconst x = 1;",
-          JsModules.rewrite("import 'bar';", modules) == "import 'bar';",
-        )
-      },
-      test("rewrites Scala.js namespace, default, named, and require forms") {
-        val modules = Map("foo" -> "__splice_foo")
-        val ns      = JsModules.rewrite("""import * as $i_foo from "foo";""", modules)
-        val dflt    = JsModules.rewrite("""import foo from "foo";""", modules)
-        val named   = JsModules.rewrite("""import { greet as $g } from "foo";""", modules)
-        val req     = JsModules.rewrite("""const x = require("foo");""", modules)
-        assertTrue(
-          ns == "const $i_foo = __splice_foo;",
-          dflt == "const foo = __splice_foo.default;",
-          named == "const $g = __splice_foo.greet;",
-          req == "const x = __splice_foo;",
-        )
-      },
-      test("rewrites export default and export function into exports assignments") {
-        val body =
-          """export default function escapeStringRegexp(string) { return string; }
-            |export function greet() { return "ok"; }
-            |""".stripMargin
-        val out = JsModules.rewriteExports(body)
-        assertTrue(
-          out.contains("exports.default = function escapeStringRegexp"),
-          out.contains("exports.greet = function greet"),
-          !out.contains("export "),
-        )
-      },
-      test("rewrites inline export lists used by published ESM bundles") {
-        val body = "function _(n){return n}function x(){}export{x as Component,_ as h};"
-        val out  = JsModules.rewriteExports(body)
-        assertTrue(
-          out.contains("exports.Component = x;"),
-          out.contains("exports.h = _;"),
-          !JsModules.leftoverExports(out),
-        )
       },
       test("dropExports removes ES module export lines") {
         val js =

@@ -129,7 +129,6 @@ object RunSpec extends ZIOSpecDefault:
         yield assertTrue(
           JsHost.evalExpr(body, "document.getElementById('out').textContent") == "h1",
           !body.contains("""from "preact""""),
-          !JsModules.leftoverExports(body),
         )
         end for
       },

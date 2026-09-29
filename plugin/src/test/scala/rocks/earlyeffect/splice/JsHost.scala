@@ -2,7 +2,9 @@ package rocks.earlyeffect.splice
 
 import org.graalvm.polyglot.{Context, HostAccess, Value}
 
-/** JVM-hosted JS eval for tests. Not a plugin feature; not Node. */
+/** JVM-hosted JS eval for tests. Not a plugin feature; not Node. It runs a splice's output as written, as the classic
+  * script a page loads, so module syntax left in it is a SyntaxError here too.
+  */
 object JsHost:
 
   private val documentShim =
@@ -17,12 +19,9 @@ object JsHost:
 
   def evalExpr(js: String, expr: String): String =
     withContext { ctx =>
-      ctx.eval("js", documentShim + asScript(js))
+      ctx.eval("js", documentShim + js)
       stringify(ctx.eval("js", expr), expr)
     }
-
-  private def asScript(js: String): String =
-    """export\s*\{[^}]*\}\s*;?""".r.replaceAllIn(JsModules.dropExports(js), "")
 
   private def withContext[A](f: Context => A): A =
     val ctx = Context

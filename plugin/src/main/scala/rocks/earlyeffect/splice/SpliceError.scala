@@ -12,7 +12,9 @@ enum SpliceError derives CanEqual:
   case NotFound(specifier: String, detail: String)
   case MissingJarPath(specifier: String, jar: String, path: String)
   case MissingArchivePath(specifier: String, archive: String, path: String)
-  case Unwrappable(file: String, reason: String)
+
+  /** esbuild could not bundle the mapped libraries; `file` is the one it pointed at, when it named one. */
+  case Bundle(file: Option[String], detail: String)
   case Closure(detail: String)
   case Minify(detail: String)
   case Io(detail: String)
@@ -38,8 +40,10 @@ enum SpliceError derives CanEqual:
       s"""sbt-splice: jar for "$specifier" ($jar) has no $path"""
     case MissingArchivePath(specifier, archive, path) =>
       s"""sbt-splice: archive for "$specifier" ($archive) has no $path"""
-    case Unwrappable(file, reason) =>
-      s"sbt-splice: could not wrap $file: $reason"
+    case Bundle(Some(file), detail) =>
+      s"sbt-splice: esbuild could not bundle $file: $detail"
+    case Bundle(None, detail) =>
+      s"sbt-splice: esbuild could not bundle the mapped libraries:\n$detail"
     case Closure(detail) =>
       s"sbt-splice: Closure compiler failed:\n$detail"
     case Minify(detail) =>
