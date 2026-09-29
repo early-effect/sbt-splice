@@ -67,9 +67,9 @@ object EsbuildNativeSpec extends ZIOSpecDefault:
     test("parallel installs keep a readable binary") {
       val callers = 12
       for
-        dir <- tempDir
-        _   <- EsbuildNative.optimize(ProtocolFixtures.errorSubclass, dir, localOnly = false)
-        _   <- ZIO.attempt(deleteTree(dir.resolve("sbt-splice-esbuild")))
+        dir     <- tempDir
+        _       <- EsbuildNative.optimize(ProtocolFixtures.errorSubclass, dir, localOnly = false)
+        _       <- ZIO.attempt(deleteTree(dir.resolve("sbt-splice-esbuild")))
         results <- ZIO.foreachPar(Chunk.fromIterable(1 to callers)) { _ =>
           EsbuildNative.optimize(ProtocolFixtures.errorSubclass, dir, localOnly = false)
         }
@@ -77,6 +77,7 @@ object EsbuildNativeSpec extends ZIOSpecDefault:
         results.size == callers,
         results.forall(js => js.contains("extends Error") && !js.contains("Error.call(")),
       )
+      end for
     },
     test("unknown host fails without fetching") {
       val err = EsbuildNative.pinFor("SerenityOS", "riscv64")

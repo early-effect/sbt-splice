@@ -65,11 +65,11 @@ assertPinFeeds := {
 
 val assertPinUpdate = taskKey[Unit]("assert zipxPinUpdate yes rewrote catalog Pin and spliceLibs")
 assertPinUpdate := {
-  val root   = (LocalRootProject / baseDirectory).value
-  val text   = IO.read(root / "build.sbt")
+  val root    = (LocalRootProject / baseDirectory).value
+  val text    = IO.read(root / "build.sbt")
   val catalog = IO.read(root / "project" / "ZipxVersions.scala")
-  val oldSha = "aa" * 32
-  val newSha = "bb" * 32
+  val oldSha  = "aa" * 32
+  val newSha  = "bb" * 32
   assert(text.contains(""".lib("foo", "1.0.1", "foo.js")"""), s"expected bumped foo pin, got:\n$text")
   assert(text.contains(newSha), s"expected new sha256, got:\n$text")
   assert(!text.contains(oldSha), s"old sha256 should be gone, got:\n$text")
