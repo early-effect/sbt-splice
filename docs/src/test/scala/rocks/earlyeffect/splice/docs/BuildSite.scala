@@ -17,7 +17,7 @@ object BuildSite extends DocsSite:
       summaryMarkdown = Some(
         s"""**sbt-splice** writes one browser-loadable script from a Scala.js project. No Node, no Vite,
 no `package.json`. Map `@JSImport` specifiers to pinned bytes, or leave `spliceLibs` empty.
-`spliceFull` is production minify (pinned esbuild, fetched on first use). `spliceFast` is concat.
+`spliceFull` bundles and minifies the linker's imports (pinned esbuild, fetched on first use). `spliceFast` is that bundle without minify.
 sbt 2 and Scala 3 only. Optional `spliceClosure` needs JDK 21+.
 """
       ),

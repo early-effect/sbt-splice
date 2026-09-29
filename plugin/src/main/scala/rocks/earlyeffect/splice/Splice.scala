@@ -53,6 +53,113 @@ object Splice:
     Resolve.files(libs, env)
 
   def run(input: SpliceInput): IO[SpliceError, Path] =
+    if bundlesLinker(input) then bundleProgram(input)
+    else scriptOrClosure(input)
+
+  /** `spliceFast` and `spliceFull` with at least one mapped library. esbuild bundles the linker's own imports. */
+  private def bundlesLinker(input: SpliceInput): Boolean =
+    input.libs.nonEmpty && (input.minify == Minify.None || input.minify == Minify.Esbuild)
+
+  private def bundleProgram(input: SpliceInput): IO[SpliceError, Path] =
+    for
+      _   <- checkLibFiles(input.libs)
+      _   <- oneLinkerFile(input.linker)
+      hit <- bundleHit(input)
+      _   <- ZIO.unless(hit)(bundleBuild(input))
+    yield input.output
+
+  private def oneLinkerFile(files: List[LinkerFile]): IO[SpliceError, Unit] =
+    files match
+      case Nil | _ :: Nil => ZIO.unit
+      case many           => ZIO.fail(SpliceError.SeveralModules(many.map(_.label)))
+
+  /** Stamp of the previous run's durable inputs, checked before esbuild. A missing sidecar is a miss. An empty one
+    * means esbuild read nothing that is still on disk.
+    */
+  private def bundleHit(input: SpliceInput): IO[SpliceError, Boolean] =
+    input.cache match
+      case None        => ZIO.succeed(false)
+      case Some(stamp) =>
+        ZIO
+          .attemptBlocking {
+            recordedInputs(stamp) match
+              case Some(paths) if paths.forall(p => Files.isRegularFile(p)) =>
+                Closure.cacheHit(stamp, bundleDigestOf(input, paths), input.output, mapPath(input))
+              case _ => false
+          }
+          .mapError(e => SpliceError.Io(s"could not read $stamp: ${e.getMessage}"))
+
+  private def bundleBuild(input: SpliceInput): IO[SpliceError, Unit] =
+    val file  = input.linker.headOption
+    val entry = EsbuildNative.Entry(
+      js = file.fold("")(_.contents),
+      path = file.flatMap(_.origin),
+      label = file.fold("main.js")(_.label),
+      aliases = input.libs,
+      env = NodeEnv.of(input.minify),
+      minify = input.minify == Minify.Esbuild,
+      sourceMapAt = mapPath(input),
+    )
+    for
+      built <- EsbuildNative.bundleEntry(entry, input.cacheDir, input.localOnly)
+      durable = built.inputs.filter(p => Files.isRegularFile(p))
+      _ <- write(input.output, finishJs(built.js, built.sourceMap, input))
+      _ <- ZIO.foreachDiscard(built.sourceMap)(write(SourceMaps.mapPath(input.output), _))
+      _ <- rememberBundle(input, durable)
+    yield ()
+    end for
+  end bundleBuild
+
+  private def bundleDigestOf(input: SpliceInput, inputs: List[Path]): String =
+    EsbuildNative.bundleDigest(
+      linker = linkerText(input),
+      aliases = input.libs,
+      inputs = inputs,
+      output = input.output,
+      sourceMaps = input.sourceMaps,
+      minify = input.minify == Minify.Esbuild,
+      env = NodeEnv.of(input.minify),
+    )
+
+  private def linkerText(input: SpliceInput): String =
+    input.linker.map(_.contents).mkString("\n")
+
+  private def inputsSidecar(stamp: Path): Path =
+    stamp.resolveSibling(stamp.getFileName.toString + ".inputs")
+
+  private def recordedInputs(stamp: Path): Option[List[Path]] =
+    val side = inputsSidecar(stamp)
+    if !Files.isRegularFile(side) then None
+    else
+      Some(
+        Files
+          .readString(side)
+          .linesIterator
+          .map(_.trim)
+          .filter(_.nonEmpty)
+          .map(Path.of(_))
+          .toList
+      )
+    end if
+  end recordedInputs
+
+  private def rememberBundle(input: SpliceInput, inputs: List[Path]): IO[SpliceError, Unit] =
+    input.cache match
+      case None        => ZIO.unit
+      case Some(stamp) =>
+        ZIO
+          .attemptBlocking {
+            Closure.storeCache(stamp, bundleDigestOf(input, inputs))
+            val side = inputsSidecar(stamp)
+            Option(side.getParent).foreach(Files.createDirectories(_))
+            val body = inputs.map(_.toAbsolutePath.normalize.toString).sorted.mkString("\n")
+            Files.writeString(side, if body.isEmpty then "" else body + "\n")
+            ()
+          }
+          .mapError(e => SpliceError.Io(s"could not write $stamp: ${e.getMessage}"))
+
+  /** Empty `spliceLibs`, and `spliceClosure`. The primary path does not scan linker text; this one still does. */
+  private def scriptOrClosure(input: SpliceInput): IO[SpliceError, Path] =
     for
       _         <- checkLibFiles(input.libs)
       _         <- ZIO.foreachDiscard(input.linker)(file => unresolvedIn(file.contents, file.label, input.libs))

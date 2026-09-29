@@ -4,10 +4,11 @@ Scala.js emits `import "preact"` for `@JSImport("preact")` (or `require`). A bro
 there is no `node_modules`. **sbt-splice** maps each specifier to pinned bytes (a file you copied, a WebJar, or a
 CDN/GitHub download with sha256) and writes one script for a `<script>` tag.
 
-You do not install Node, Vite, or esbuild. `spliceFast` is concat (development). `spliceFull` is the production
-file: Scala.js minify, then the same kind of minify Vite uses (locals, whitespace, JS property names stay). On first
-`spliceFull` the plugin fetches a pinned esbuild for this OS/arch through Coursier. `spliceClosure` is optional
-Closure advanced. With no npm imports, leave `spliceLibs` empty; `spliceFull` is still the production file.
+You do not install Node, Vite, or esbuild. The plugin does not run Node either. `spliceFast` bundles the linker's
+imports (development). `spliceFull` bundles and minifies that file (production): locals and whitespace shrink, JS
+property names and `class` / `super` stay. The first build that needs esbuild fetches a pinned binary for this
+OS/arch through Coursier. `spliceClosure` is optional Closure advanced on the Scala.js output. With no npm imports,
+leave `spliceLibs` empty; that file stays a classic script, and `spliceFull` is still the production file.
 
 Coordinate: `rocks.earlyeffect` % `sbt-splice`
 
@@ -25,9 +26,11 @@ spliceResolvers += Splice.jsDelivr
 spliceLibs += Splice.lib("preact", "10.26.4", "dist/preact.module.js").sha256("…")
 ```
 
-Output defaults to `target/splice/fast.js` and `target/splice/full.js`. Unresolved specifiers fail the task. CDN and
-GitHub pins require sha256; a WebJar uses project `resolvers`. The plugin is not released yet. Design:
-[ROADMAP.md](ROADMAP.md).
+Output defaults to `target/splice/fast.js`, `target/splice/full.js`, and `target/splice/closure.js`. An unmapped
+specifier fails the task and names the file. CDN and GitHub pins require sha256; a mismatch fails the task. A WebJar
+uses project `resolvers`. There is no npm and no `package.json`. 0.3.0 is on Maven Central.
+
+Docs: <https://www.earlyeffect.rocks/sbt-splice/>
 
 ## License
 

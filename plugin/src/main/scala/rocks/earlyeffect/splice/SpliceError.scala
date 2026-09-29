@@ -13,8 +13,11 @@ enum SpliceError derives CanEqual:
   case MissingJarPath(specifier: String, jar: String, path: String)
   case MissingArchivePath(specifier: String, archive: String, path: String)
 
-  /** esbuild could not bundle the mapped libraries; `file` is the one it pointed at, when it named one. */
+  /** esbuild could not bundle; `file` is the one it pointed at, when it named one. */
   case Bundle(file: Option[String], detail: String)
+
+  /** The bundle path saw more than one linker file. Empty `spliceLibs` still concatenates. */
+  case SeveralModules(files: List[String])
   case Closure(detail: String)
   case Minify(detail: String)
   case Io(detail: String)
@@ -44,6 +47,8 @@ enum SpliceError derives CanEqual:
       s"sbt-splice: esbuild could not bundle $file: $detail"
     case Bundle(None, detail) =>
       s"sbt-splice: esbuild could not bundle the mapped libraries:\n$detail"
+    case SeveralModules(files) =>
+      s"sbt-splice: expected one linker file to bundle, found ${files.mkString(", ")}"
     case Closure(detail) =>
       s"sbt-splice: Closure compiler failed:\n$detail"
     case Minify(detail) =>

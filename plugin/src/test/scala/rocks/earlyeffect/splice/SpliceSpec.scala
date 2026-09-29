@@ -50,7 +50,7 @@ object SpliceSpec extends ZIOSpecDefault:
           out = dir.resolve("splice.js")
           path <- Splice.run(
             SpliceInput(
-              linker = List(LinkerFile("main.js", "const Foo = __splice_foo;\n")),
+              linker = List(LinkerFile("main.js", use("foo", "Foo", "Foo.greet()"))),
               libs = Map("foo" -> foo),
               output = out,
             )
@@ -58,23 +58,52 @@ object SpliceSpec extends ZIOSpecDefault:
           body <- ZIO.attempt(Files.readString(path))
         yield assertTrue(
           path == out,
-          JsHost.evalExpr(body, "Foo.greet()") == "ok",
+          outText(body) == "ok",
           !body.contains("""from "foo""""),
           !body.contains("""require("foo")"""),
         )
       },
-      test("source map section offset equals prepended wrapper line count including blanks") {
+      test("empty spliceLibs keeps an indexed source map") {
         for
           dir <- tempDir
-          foo = dir.resolve("foo.js")
-          _ <- write(foo, "export function greet() { return \"ok\"; }\n")
           linkerMap = dir.resolve("main.js.map")
           _ <- write(linkerMap, """{"version":3,"file":"main.js","sources":["Hello.scala"],"mappings":"AAAA"}""")
-          out    = dir.resolve("splice.js")
-          marker = "const Foo = __splice_foo;\n"
+          out = dir.resolve("splice.js")
           _ <- Splice.run(
             SpliceInput(
-              linker = List(LinkerFile("main.js", marker, Some(linkerMap))),
+              linker = List(
+                LinkerFile(
+                  "main.js",
+                  """document.getElementById("out").textContent = "plain";
+                    |""".stripMargin,
+                  Some(linkerMap),
+                )
+              ),
+              libs = Map.empty,
+              output = out,
+              sourceMaps = true,
+            )
+          )
+          body <- ZIO.attempt(Files.readString(out))
+          map  <- ZIO.attempt(Files.readString(SourceMaps.mapPath(out)))
+        yield assertTrue(
+          outText(body) == "plain",
+          map.contains("\"sections\""),
+          body.contains("sourceMappingURL=splice.js.map"),
+        )
+      },
+      test("a bundled source map is esbuild's and names the linker file") {
+        for
+          dir <- tempDir
+          foo  = dir.resolve("foo.js")
+          main = dir.resolve("main.js")
+          js   = use("foo", "Foo", "Foo.greet()")
+          _ <- write(foo, """export function greet() { return "ok"; }""")
+          _ <- write(main, js)
+          out = dir.resolve("splice.js")
+          _ <- Splice.run(
+            SpliceInput(
+              linker = List(LinkerFile("main.js", js, None, Some(main))),
               libs = Map("foo" -> foo),
               output = out,
               sourceMaps = true,
@@ -82,15 +111,53 @@ object SpliceSpec extends ZIOSpecDefault:
           )
           body <- ZIO.attempt(Files.readString(out))
           map  <- ZIO.attempt(Files.readString(SourceMaps.mapPath(out)))
-          idx    = body.indexOf(marker)
-          prefix = body.substring(0, idx)
-          offset = SourceMaps.lineOffset(prefix)
         yield assertTrue(
-          idx > 0,
-          offset > 0,
-          map.contains(s""""line":$offset"""),
+          outText(body) == "ok",
           body.contains("sourceMappingURL=splice.js.map"),
+          map.contains("\"sources\""),
+          map.contains("\"mappings\""),
+          map.contains("main.js"),
+          !map.contains("\"sections\""),
         )
+      },
+      test("a linker sourceMappingURL does not replace the linker file in the bundle map") {
+        val js =
+          """import * as Foo from "foo";
+            |document.getElementById("out").textContent = Foo.greet();
+            |//# sourceMappingURL=main.js.map
+            |""".stripMargin
+        for
+          dir <- tempDir
+          linkDir = dir.resolve("target").resolve("splice").resolve("fast-link")
+          main    = linkDir.resolve("main.js")
+          foo     = dir.resolve("foo.js")
+          out     = dir.resolve("app.js")
+          _ <- ZIO.attempt(Files.createDirectories(linkDir))
+          _ <- write(foo, """export function greet() { return "ok"; }""")
+          _ <- write(main, js)
+          _ <- write(
+            linkDir.resolve("main.js.map"),
+            """{"version":3,"file":"main.js","sources":["Hello.scala"],"mappings":"AAAA","names":[]}""",
+          )
+          _ <- Splice.run(
+            SpliceInput(
+              linker = List(LinkerFile("main.js", js, Some(linkDir.resolve("main.js.map")), Some(main))),
+              libs = Map("foo" -> foo),
+              output = out,
+              sourceMaps = true,
+            )
+          )
+          body     <- ZIO.attempt(Files.readString(out))
+          map      <- ZIO.attempt(Files.readString(SourceMaps.mapPath(out)))
+          restored <- ZIO.attempt(Files.readString(main))
+        yield assertTrue(
+          outText(body) == "ok",
+          map.contains("\"sources\""),
+          map.contains("fast-link/main.js"),
+          !map.contains("\"sections\""),
+          restored == js,
+        )
+        end for
       },
       test("splices two mapped specifiers into one file") {
         for
@@ -105,8 +172,9 @@ object SpliceSpec extends ZIOSpecDefault:
               linker = List(
                 LinkerFile(
                   "main.js",
-                  """const Foo = __splice_foo;
-                    |const Bar = __splice_bar;
+                  """import * as Foo from "foo";
+                    |import * as Bar from "bar";
+                    |document.getElementById("out").textContent = "" + Foo.foo() + Bar.bar();
                     |""".stripMargin,
                 )
               ),
@@ -116,8 +184,7 @@ object SpliceSpec extends ZIOSpecDefault:
           )
           body <- ZIO.attempt(Files.readString(out))
         yield assertTrue(
-          body.contains("__splice_foo"),
-          body.contains("__splice_bar"),
+          outText(body) == "12",
           !body.contains("""from "foo""""),
           !body.contains("""from "bar""""),
         )
@@ -137,14 +204,14 @@ object SpliceSpec extends ZIOSpecDefault:
           out = dir.resolve("splice.js")
           _ <- Splice.run(
             SpliceInput(
-              linker = List(LinkerFile("main.js", "const Foo = __splice_foo;\n")),
+              linker = List(LinkerFile("main.js", use("foo", "Foo", "Foo.greet()"))),
               libs = Map("foo" -> foo),
               output = out,
             )
           )
           body <- ZIO.attempt(Files.readString(out))
         yield assertTrue(
-          body.contains("helper"),
+          outText(body) == "ok",
           !body.contains("""from "./util.js""""),
           !body.contains("""from "foo""""),
         )
@@ -164,8 +231,8 @@ object SpliceSpec extends ZIOSpecDefault:
               linker = List(
                 LinkerFile(
                   "main.js",
-                  """const escapeStringRegexp = __splice_escape_string_regexp.default;
-                    |globalThis.__spliced = escapeStringRegexp("hello?");
+                  """import * as escapeStringRegexp from "escape-string-regexp";
+                    |document.getElementById("out").textContent = escapeStringRegexp.default("hello?");
                     |""".stripMargin,
                 )
               ),
@@ -177,7 +244,7 @@ object SpliceSpec extends ZIOSpecDefault:
         yield assertTrue(
           digest == pinned,
           pinned == "af2065ad2f2d2b91946c2121e21618daa3f4b18787af9226f8c953ca54cca2f5",
-          JsHost.evalExpr(body, "globalThis.__spliced") == "hello\\?",
+          outText(body) == "hello\\?",
           !body.contains("""from "escape-string-regexp""""),
         )
         end for
@@ -220,7 +287,7 @@ object SpliceSpec extends ZIOSpecDefault:
           err <- Splice
             .run(
               SpliceInput(
-                linker = List(LinkerFile("main.js", "const Foo = __splice_foo;\n")),
+                linker = List(LinkerFile("main.js", use("foo", "Foo", "Foo.greet()"))),
                 libs = Map("foo" -> foo),
                 output = dir.resolve("splice.js"),
               )
@@ -240,7 +307,7 @@ object SpliceSpec extends ZIOSpecDefault:
           err <- Splice
             .run(
               SpliceInput(
-                linker = List(LinkerFile("main.js", "const Foo = __splice_foo;\n")),
+                linker = List(LinkerFile("main.js", use("foo", "Foo", "Foo.here"))),
                 libs = Map("foo" -> foo),
                 output = dir.resolve("splice.js"),
               )
@@ -280,7 +347,7 @@ object SpliceSpec extends ZIOSpecDefault:
           err <- Splice
             .run(
               SpliceInput(
-                linker = List(LinkerFile("main.js", "const Foo = __splice_foo;\n")),
+                linker = List(LinkerFile("main.js", use("foo", "Foo", "Foo.greet()"))),
                 libs = Map("foo" -> foo),
                 output = dir.resolve("splice.js"),
               )
@@ -314,7 +381,7 @@ object SpliceSpec extends ZIOSpecDefault:
           ) == "Unable to obtain LocalDate from 1 from here"
         )
       },
-      test("a library that reads process.env.NODE_ENV runs in the browser build") {
+      test("process.env.NODE_ENV is development for spliceFast and production for spliceFull") {
         for
           dir <- tempDir
           foo = dir.resolve("foo.js")
@@ -322,23 +389,14 @@ object SpliceSpec extends ZIOSpecDefault:
             foo,
             "export function mode() { return process.env.NODE_ENV === \"production\" ? \"prod\" : \"dev\"; }\n",
           )
-          out = dir.resolve("splice.js")
-          _ <- Splice.run(
-            SpliceInput(
-              linker = List(
-                LinkerFile(
-                  "main.js",
-                  """const Foo = __splice_foo;
-                    |document.getElementById("out").textContent = Foo.mode();
-                    |""".stripMargin,
-                )
-              ),
-              libs = Map("foo" -> foo),
-              output = out,
-            )
-          )
-          body <- ZIO.attempt(Files.readString(out))
-        yield assertTrue(JsHost.evalExpr(body, "document.getElementById('out').textContent").nonEmpty)
+          fast   = dir.resolve("fast.js")
+          full   = dir.resolve("full.js")
+          linker = List(LinkerFile("main.js", use("foo", "Foo", "Foo.mode()")))
+          _    <- Splice.run(SpliceInput(linker, Map("foo" -> foo), fast))
+          _    <- Splice.run(SpliceInput(linker, Map("foo" -> foo), full, minify = Minify.Esbuild))
+          dev  <- ZIO.attempt(Files.readString(fast))
+          prod <- ZIO.attempt(Files.readString(full))
+        yield assertTrue(outText(dev) == "dev", outText(prod) == "prod")
       },
       test("a library's side-effect imports run first, on a line of their own or minified mid-line") {
         check(Gen.elements("import \"./side.js\";\n", "var q=1;import\"./side.js\";")) { sideEffect =>
@@ -354,9 +412,7 @@ object SpliceSpec extends ZIOSpecDefault:
                 linker = List(
                   LinkerFile(
                     "main.js",
-                    """const Foo = __splice_foo;
-                      |document.getElementById("out").textContent = Foo.greet();
-                      |""".stripMargin,
+                    use("foo", "Foo", "Foo.greet()"),
                   )
                 ),
                 libs = Map("foo" -> foo),
@@ -384,9 +440,7 @@ object SpliceSpec extends ZIOSpecDefault:
                 linker = List(
                   LinkerFile(
                     "main.js",
-                    s"""const User = __splice_$importer;
-                       |document.getElementById("out").textContent = User.hello();
-                       |""".stripMargin,
+                    use(importer, "User", "User.hello()"),
                   )
                 ),
                 libs = Map(importer -> user, imported -> used),
@@ -418,9 +472,7 @@ object SpliceSpec extends ZIOSpecDefault:
                 linker = List(
                   LinkerFile(
                     "main.js",
-                    s"""const Foo = __splice_foo;
-                       |document.getElementById("out").textContent = $call;
-                       |""".stripMargin,
+                    use("foo", "Foo", call),
                   )
                 ),
                 libs = Map("foo" -> foo),
@@ -449,9 +501,7 @@ object SpliceSpec extends ZIOSpecDefault:
               linker = List(
                 LinkerFile(
                   "main.js",
-                  """const Foo = __splice_foo;
-                    |document.getElementById("out").textContent = Foo.a() + Foo.b() + Foo.C.tag + Foo.x;
-                    |""".stripMargin,
+                  use("foo", "Foo", "Foo.a() + Foo.b() + Foo.C.tag + Foo.x"),
                 )
               ),
               libs = Map("foo" -> foo),
@@ -478,9 +528,7 @@ object SpliceSpec extends ZIOSpecDefault:
                 linker = List(
                   LinkerFile(
                     "main.js",
-                    """const Foo = __splice_foo;
-                      |document.getElementById("out").textContent = Foo.greet();
-                      |""".stripMargin,
+                    use("foo", "Foo", "Foo.greet()"),
                   )
                 ),
                 libs = Map("foo" -> foo),
@@ -502,9 +550,7 @@ object SpliceSpec extends ZIOSpecDefault:
               linker = List(
                 LinkerFile(
                   "main.js",
-                  """const Foo = __splice_foo.default;
-                    |document.getElementById("out").textContent = Foo.greet();
-                    |""".stripMargin,
+                  use("foo", "Foo", "Foo.default.greet()"),
                 )
               ),
               libs = Map("foo" -> foo),
@@ -530,9 +576,7 @@ object SpliceSpec extends ZIOSpecDefault:
               linker = List(
                 LinkerFile(
                   "main.js",
-                  """const Foo = __splice_foo;
-                    |document.getElementById("out").textContent = new Foo.Hello().greet();
-                    |""".stripMargin,
+                  use("foo", "Foo", "new Foo.Hello().greet()"),
                 )
               ),
               libs = Map("foo" -> foo),
@@ -550,7 +594,7 @@ object SpliceSpec extends ZIOSpecDefault:
           stamp = dir.resolve("digest")
           _ <- write(foo, "export const x = \"one\";\n")
           input = SpliceInput(
-            linker = List(LinkerFile("main.js", "document.getElementById(\"out\").textContent = __splice_foo.x;\n")),
+            linker = List(LinkerFile("main.js", use("foo", "Foo", "Foo.x"))),
             libs = Map("foo" -> foo),
             output = out,
             minify = Minify.Esbuild,
@@ -572,7 +616,7 @@ object SpliceSpec extends ZIOSpecDefault:
           _ <- write(foo, "export { x } from \"./impl.js\";\n")
           _ <- write(impl, "export const x = \"one\";\n")
           input = SpliceInput(
-            linker = List(LinkerFile("main.js", "document.getElementById(\"out\").textContent = __splice_foo.x;\n")),
+            linker = List(LinkerFile("main.js", use("foo", "Foo", "Foo.x"))),
             libs = Map("foo" -> foo),
             output = out,
             minify = Minify.Esbuild,
@@ -597,21 +641,14 @@ object SpliceSpec extends ZIOSpecDefault:
           _ <- Splice.run(
             SpliceInput(
               linker = List(
-                LinkerFile(
-                  "main.js",
-                  """const Foo = __splice_foo;
-                    |document.getElementById("out").textContent = Foo.greet();
-                    |""".stripMargin,
-                )
+                LinkerFile("main.js", use("foo", "Foo", "Foo.greet()"))
               ),
               libs = Map("foo" -> foo),
               output = out,
             )
           )
           body <- ZIO.attempt(Files.readString(out))
-        yield assertTrue(
-          JsHost.evalExpr(body, "document.getElementById('out').textContent") == "cjs"
-        )
+        yield assertTrue(outText(body) == "cjs")
       },
       test("wraps UMD through the CJS branch") {
         val umd =
@@ -630,24 +667,17 @@ object SpliceSpec extends ZIOSpecDefault:
           _ <- Splice.run(
             SpliceInput(
               linker = List(
-                LinkerFile(
-                  "main.js",
-                  """const Foo = __splice_foo;
-                    |document.getElementById("out").textContent = Foo.greet();
-                    |""".stripMargin,
-                )
+                LinkerFile("main.js", use("foo", "Foo", "Foo.greet()"))
               ),
               libs = Map("foo" -> foo),
               output = out,
             )
           )
           body <- ZIO.attempt(Files.readString(out))
-        yield assertTrue(
-          JsHost.evalExpr(body, "document.getElementById('out').textContent") == "umd"
-        )
+        yield assertTrue(outText(body) == "umd")
         end for
       },
-      test("spliceFull class-extends override and setState call work without a keep list") {
+      test("spliceClosure class-extends override and setState call work without a keep list") {
         for
           dir <- tempDir
           foo = dir.resolve("foo.js")
@@ -669,7 +699,7 @@ object SpliceSpec extends ZIOSpecDefault:
           !body.contains(ProtocolFixtures.DeadCodeMarker),
         )
       },
-      test("spliceFull custom-element connectedCallback override runs") {
+      test("spliceClosure custom-element connectedCallback override runs") {
         for
           dir <- tempDir
           el = dir.resolve("el.js")
@@ -689,6 +719,282 @@ object SpliceSpec extends ZIOSpecDefault:
           body.contains("connectedCallback"),
         )
       },
+      test("spliceFast and spliceFull drop an unused export of a namespace import") {
+        for
+          dir <- tempDir
+          lib = dir.resolve("lib.js")
+          _ <- write(
+            lib,
+            """export function one() { return "one"; }
+              |export const dead = "DEAD_EXPORT_MARKER";
+              |""".stripMargin,
+          )
+          linker = List(LinkerFile("main.js", use("lib", "Lib", "Lib.one()")))
+          fast <- readRun(SpliceInput(linker, Map("lib" -> lib), dir.resolve("fast.js")))
+          full <- readRun(SpliceInput(linker, Map("lib" -> lib), dir.resolve("full.js"), minify = Minify.Esbuild))
+        yield assertTrue(
+          outText(fast) == "one",
+          outText(full) == "one",
+          !fast.contains("DEAD_EXPORT_MARKER"),
+          !full.contains("DEAD_EXPORT_MARKER"),
+        )
+      },
+      test("passing the namespace as a value keeps the unused export") {
+        for
+          dir <- tempDir
+          lib = dir.resolve("lib.js")
+          _ <- write(
+            lib,
+            """export function one() { return "one"; }
+              |export const dead = "DEAD_EXPORT_MARKER";
+              |""".stripMargin,
+          )
+          body <- readRun(
+            SpliceInput(
+              List(LinkerFile("main.js", use("lib", "Lib", "Lib.dead + Lib.one()"))),
+              Map("lib" -> lib),
+              dir.resolve("fast.js"),
+            )
+          )
+        yield assertTrue(body.contains("DEAD_EXPORT_MARKER"), outText(body) == "DEAD_EXPORT_MARKERone")
+      },
+      test("a direct re-export of an unused binding is dropped") {
+        for
+          dir <- tempDir
+          live  = dir.resolve("live.js")
+          dead  = dir.resolve("dead.js")
+          entry = dir.resolve("entry.js")
+          _ <- write(live, """export function live() { return "live"; }""")
+          _ <- write(dead, """export const dead = "DEAD_EXPORT_MARKER";""")
+          _ <- write(
+            entry,
+            """export { live } from "./live.js";
+              |export { dead } from "./dead.js";
+              |""".stripMargin,
+          )
+          linker = List(LinkerFile("main.js", use("entry", "Lib", "Lib.live()")))
+          fast <- readRun(SpliceInput(linker, Map("entry" -> entry), dir.resolve("fast.js")))
+          full <- readRun(SpliceInput(linker, Map("entry" -> entry), dir.resolve("full.js"), minify = Minify.Esbuild))
+        yield assertTrue(
+          outText(fast) == "live",
+          outText(full) == "live",
+          !fast.contains("DEAD_EXPORT_MARKER"),
+          !full.contains("DEAD_EXPORT_MARKER"),
+        )
+      },
+      test("a pinned export * as namespace still runs the export the program calls") {
+        for
+          dir <- tempDir
+          inner = dir.resolve("inner.js")
+          star  = dir.resolve("star.js")
+          _ <- write(
+            inner,
+            """export function live() { return "live"; }
+              |export const dead = "STAR_MARKER";
+              |""".stripMargin,
+          )
+          _    <- write(star, """export * as ns from "./inner.js";""")
+          body <- readRun(
+            SpliceInput(
+              List(LinkerFile("main.js", use("star", "Lib", "Lib.ns.live()"))),
+              Map("star" -> star),
+              dir.resolve("fast.js"),
+            )
+          )
+        yield assertTrue(outText(body) == "live")
+      },
+      test("spliceClosure runs the called export and keeps an unused library export") {
+        for
+          dir <- tempDir
+          foo = dir.resolve("foo.js")
+          _ <- write(
+            foo,
+            """export function used() { return "used"; }
+              |export const dead = "DEAD_EXPORT_MARKER";
+              |""".stripMargin,
+          )
+          body <- readRun(
+            SpliceInput(
+              List(
+                LinkerFile(
+                  "main.js",
+                  """document.getElementById("out").textContent = __splice_foo.used();
+                    |""".stripMargin,
+                )
+              ),
+              Map("foo" -> foo),
+              dir.resolve("closure.js"),
+              minify = Minify.Closure,
+            )
+          )
+        yield assertTrue(outText(body) == "used", body.contains("DEAD_EXPORT_MARKER"))
+      },
+      test("spliceFast and spliceFull keep a class-extends render override") {
+        val linker =
+          """import * as $i_widget from "foo";
+            |function $s(this$1) { this$1.setState({ "v": "from-will-mount" }); }
+            |var $b;
+            |function $a() {
+            |  if (!$b) {
+            |    $b = class $b extends $i_widget.Component {
+            |      constructor() { super(); }
+            |      "componentWillMount"() { $s(this); }
+            |      "render"() { return "OVERRIDE_RENDER"; }
+            |      "componentDidMount"() { return "OVERRIDE_DID_MOUNT"; }
+            |    };
+            |  }
+            |  return $b;
+            |}
+            |document.getElementById("out").textContent = $i_widget.mount($a());
+            |""".stripMargin
+        for
+          dir <- tempDir
+          foo = dir.resolve("foo.js")
+          _ <- write(foo, ProtocolFixtures.classComponentEsm)
+          files = List(LinkerFile("main.js", linker))
+          fast <- readRun(SpliceInput(files, Map("foo" -> foo), dir.resolve("fast.js")))
+          full <- readRun(SpliceInput(files, Map("foo" -> foo), dir.resolve("full.js"), minify = Minify.Esbuild))
+        yield assertTrue(
+          outText(fast) == ProtocolFixtures.classComponentOut,
+          outText(full) == ProtocolFixtures.classComponentOut,
+          fast.contains("setState"),
+          fast.contains("render"),
+          full.contains("setState"),
+          full.contains("render"),
+          !fast.contains(ProtocolFixtures.DeadCodeMarker),
+          !full.contains(ProtocolFixtures.DeadCodeMarker),
+        )
+        end for
+      },
+      test("spliceFast keeps a connectedCallback override") {
+        val linker =
+          """import * as El from "el";
+            |class HelloElement extends El.HtmlElement {
+            |  constructor() { super(); }
+            |  connectedCallback() { return "OVERRIDE_CONNECTED"; }
+            |}
+            |document.getElementById("out").textContent = El.upgrade(HelloElement);
+            |""".stripMargin
+        for
+          dir <- tempDir
+          el = dir.resolve("el.js")
+          _    <- write(el, ProtocolFixtures.customElementEsm)
+          body <- readRun(SpliceInput(List(LinkerFile("main.js", linker)), Map("el" -> el), dir.resolve("fast.js")))
+        yield assertTrue(
+          outText(body) == ProtocolFixtures.customElementOut,
+          body.contains("connectedCallback"),
+        )
+      },
+      test("an unmapped specifier next to a mapped one names the linker file") {
+        for
+          dir <- tempDir
+          foo = dir.resolve("foo.js")
+          _   <- write(foo, """export function greet() { return "ok"; }""")
+          err <- Splice
+            .run(
+              SpliceInput(
+                linker = List(
+                  LinkerFile(
+                    "main.js",
+                    """import * as Foo from "foo";
+                      |import * as Bar from "bar";
+                      |document.getElementById("out").textContent = Foo.greet();
+                      |""".stripMargin,
+                  )
+                ),
+                libs = Map("foo" -> foo),
+                output = dir.resolve("splice.js"),
+              )
+            )
+            .flip
+        yield assertTrue(
+          err == SpliceError.Unresolved("bar", "main.js"),
+          err.message == """sbt-splice: unresolved specifier "bar" in main.js""",
+        )
+      },
+      test("a linker string that says from does not fail the bundle") {
+        for
+          dir <- tempDir
+          foo = dir.resolve("foo.js")
+          _    <- write(foo, """export function greet() { return "ok"; }""")
+          body <- readRun(
+            SpliceInput(
+              List(
+                LinkerFile(
+                  "main.js",
+                  """import * as Foo from "foo";
+                    |const m = "Unable to obtain LocalDate from " + Foo.greet();
+                    |document.getElementById("out").textContent = m;
+                    |""".stripMargin,
+                )
+              ),
+              Map("foo" -> foo),
+              dir.resolve("splice.js"),
+            )
+          )
+        yield assertTrue(outText(body) == "Unable to obtain LocalDate from ok")
+      },
+      test("more than one linker file on the bundle path fails") {
+        for
+          dir <- tempDir
+          foo = dir.resolve("foo.js")
+          _   <- write(foo, """export function greet() { return "ok"; }""")
+          err <- Splice
+            .run(
+              SpliceInput(
+                linker = List(LinkerFile("a.js", use("foo", "Foo", "Foo.greet()")), LinkerFile("b.js", "")),
+                libs = Map("foo" -> foo),
+                output = dir.resolve("splice.js"),
+              )
+            )
+            .flip
+        yield assertTrue(
+          err == SpliceError.SeveralModules(List("a.js", "b.js")),
+          err.message == "sbt-splice: expected one linker file to bundle, found a.js, b.js",
+        )
+      },
+      test("a mapped library the linker never imports is absent") {
+        for
+          dir <- tempDir
+          foo = dir.resolve("foo.js")
+          _    <- write(foo, """export const dead = "DEAD_EXPORT_MARKER";""")
+          body <- readRun(
+            SpliceInput(
+              List(
+                LinkerFile(
+                  "main.js",
+                  """document.getElementById("out").textContent = "hi";
+                    |""".stripMargin,
+                )
+              ),
+              Map("foo" -> foo),
+              dir.resolve("splice.js"),
+            )
+          )
+        yield assertTrue(outText(body) == "hi", !body.contains("DEAD_EXPORT_MARKER"))
+      },
+      test("a cached full build is rebuilt when a specifier points at another file") {
+        for
+          dir <- tempDir
+          foo   = dir.resolve("foo.js")
+          bar   = dir.resolve("bar.js")
+          out   = dir.resolve("full.js")
+          stamp = dir.resolve("digest")
+          _ <- write(foo, "export const x = \"one\";\n")
+          _ <- write(bar, "export const x = \"one\";\n")
+          first = SpliceInput(
+            linker = List(LinkerFile("main.js", use("foo", "Foo", "Foo.x"))),
+            libs = Map("foo" -> foo),
+            output = out,
+            minify = Minify.Esbuild,
+            cache = Some(stamp),
+          )
+          _    <- Splice.run(first)
+          _    <- write(out, "reused")
+          _    <- Splice.run(first.copy(libs = Map("foo" -> bar)))
+          body <- ZIO.attempt(Files.readString(out))
+        yield assertTrue(body != "reused")
+      },
     )
 
   private def vendorBytes(name: String): Array[Byte] =
@@ -702,6 +1008,20 @@ object SpliceSpec extends ZIOSpecDefault:
 
   /** `s` as a JS double-quoted string literal. */
   private def quoted(s: String): String = "\"" + s.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
+
+  /** Namespace import of `spec`, then write `expr` where a page script can read it. An iife does not leak the binding.
+    */
+  private def use(spec: String, binding: String, expr: String): String =
+    s"""import * as $binding from "$spec";
+       |document.getElementById("out").textContent = $expr;
+       |""".stripMargin
+
+  private def outText(js: String): String =
+    JsHost.evalExpr(js, "document.getElementById('out').textContent")
+
+  private def readRun(input: SpliceInput): IO[SpliceError, String] =
+    Splice.run(input) *>
+      ZIO.attempt(Files.readString(input.output)).mapError(e => SpliceError.Io(e.getMessage))
 
   private def tempDir: UIO[Path] =
     ZIO.attempt(Files.createTempDirectory("sbt-splice-")).orDie

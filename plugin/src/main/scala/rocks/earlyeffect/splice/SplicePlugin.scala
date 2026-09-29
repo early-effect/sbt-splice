@@ -12,7 +12,9 @@ import java.nio.file.Path
 import scala.concurrent.duration.Duration
 import scala.concurrent.{Await, ExecutionContext}
 
-/** Private remapped link, then splice of pinned JS onto `__splice_*`. */
+/** Link, then splice pinned JS. `spliceFast` and `spliceFull` bundle the linker's imports. `spliceClosure` rewrites
+  * those imports to `__splice_*` globals first.
+  */
 object SplicePlugin extends AutoPlugin:
 
   private val SpliceJs: Configuration = config("splice").hide
@@ -28,13 +30,13 @@ object SplicePlugin extends AutoPlugin:
     val spliceFullOutput    = settingKey[File]("Where spliceFull writes the spliced JS.")
     val spliceClosureOutput = settingKey[File]("Where spliceClosure writes the spliced JS.")
     val spliceFast          = taskKey[File](
-      "Private-link remapped IR, then splice pinned JS (development)."
+      "Link, then bundle the linker's imports with pinned esbuild (development)."
     )
     val spliceFull = taskKey[File](
-      "Private-link remapped IR, splice pinned JS, then esbuild minify (production)."
+      "Link, then bundle and minify the linker's imports with pinned esbuild (production)."
     )
     val spliceClosure = taskKey[File](
-      "Private-link remapped IR, splice pinned JS, then Closure advanced."
+      "Link with imports rewritten to __splice_* globals, then Closure advanced on Scala.js output."
     )
     val spliceSourceMaps = settingKey[Boolean](
       "Write a source map next to the spliced JS. Default true on spliceFast, false on spliceFull and spliceClosure."
@@ -136,7 +138,17 @@ object SplicePlugin extends AutoPlugin:
       Def
         .task {
           Def.uncached {
-            privateLink(irInfo.data, specs, linker, linkerImpl, inits, factory, streams.value.log, linkDir)
+            privateLink(
+              irInfo.data,
+              specs,
+              linker,
+              linkerImpl,
+              inits,
+              factory,
+              streams.value.log,
+              linkDir,
+              minify,
+            )
             runSplice(
               dir = linkDir,
               libs = libs,
@@ -164,13 +176,16 @@ object SplicePlugin extends AutoPlugin:
       factory: sbt.Logger => SJSLogger,
       log: sbt.Logger,
       linkDir: File,
+      minify: Minify,
   ): Unit =
     IO.createDirectory(linkDir)
-    val remapped           = ir.map(SpliceIR.fromIRFile(_, mapped))
+    val linked = minify match
+      case Minify.Closure               => ir.map(SpliceIR.fromIRFile(_, mapped))
+      case Minify.None | Minify.Esbuild => ir
     val tlog               = factory(log)
     given ExecutionContext = ExecutionContext.global
     Await.result(
-      linker.link(remapped, inits, linkerImpl.outputDirectory(linkDir.toPath), tlog),
+      linker.link(linked, inits, linkerImpl.outputDirectory(linkDir.toPath), tlog),
       Duration.Inf,
     )
     ()
@@ -198,7 +213,7 @@ object SplicePlugin extends AutoPlugin:
       files
         .filter(f => f.getName.endsWith(".js") && !f.getName.endsWith(".map"))
         .sortBy(_.getName)
-        .map(f => LinkerFile(f.getName, IO.read(f), maps.get(f.getName)))
+        .map(f => LinkerFile(f.getName, IO.read(f), maps.get(f.getName), Some(f.toPath)))
     val env = ResolveEnv(
       resolvers = resolvers,
       cacheDir = cacheDir,

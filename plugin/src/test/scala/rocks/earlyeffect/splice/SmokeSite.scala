@@ -22,8 +22,8 @@ object SmokeSite:
             linker = List(
               LinkerFile(
                 "main.js",
-                """const escapeStringRegexp = __splice_escape_string_regexp.default;
-                  |document.getElementById("out").textContent = escapeStringRegexp("hello?");
+                """import * as escapeStringRegexp from "escape-string-regexp";
+                  |document.getElementById("out").textContent = escapeStringRegexp.default("hello?");
                   |""".stripMargin,
               )
             ),
