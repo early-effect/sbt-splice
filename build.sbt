@@ -45,8 +45,10 @@ val pluginSettings = Seq(
 
 zipxJavaVersion      := JdkVersion("25")
 zipxWorkflowDispatch := true
-zipxCapabilities += ZipxCentral.release
+zipxCapabilities += ZipxCentral.snapshots
+zipxCapabilities += ZipxCentral.pullRequestSnapshots("snapshots")
 zipxCapabilities += ZipxDocs.pages()
+zipxReleaseWorkflow := Some(ZipxCentral.releases)
 zipxEnv := Map(
   "PLAYWRIGHT_BROWSERS_PATH" -> EnvValue.typed(Expr.github("workspace") ++ Expr.lit("/target/ms-playwright"))
 )

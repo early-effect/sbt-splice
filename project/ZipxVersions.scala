@@ -13,6 +13,8 @@ object MyVersions extends ZipxVersions:
   val sbt: SbtVersion     = SbtVersion("2.1.0-M3")
   val scala: ScalaVersion = ScalaVersion("3.9.0")
 
+  val release = ShipGroup("sbt-splice", "0.3.2")("plugin", "spliceZipx")
+
   val zio: Lib        = Lib("dev.zio", "zio", "2.1.26")
   val zioTest: Lib    = zio.mod("zio-test").test
   val zioTestSbt: Lib = zio.mod("zio-test-sbt").test
@@ -40,7 +42,6 @@ object MyVersions extends ZipxVersions:
   val chekhovDriver: Lib  = chekhovZioTest.mod("chekhov-driver")
 
   val scalafmt: Plugin       = Plugin("org.scalameta", "sbt-scalafmt", "2.6.2")
-  val dynverCi: Plugin       = Plugin("rocks.earlyeffect", "sbt-dynver-ci", "0.2.3")
   val specularPlugin: Plugin = Plugin("rocks.earlyeffect", "sbt-specular", "0.18.1")
   val chekhovPlugin: Plugin  = Plugin("rocks.earlyeffect", "sbt-chekhov", "0.1.2")
 
