@@ -3,6 +3,5 @@ resolvers += "central-snapshots" at "https://central.sonatype.com/repository/mav
 forceUpdatePeriod := Some(scala.concurrent.duration.Duration.Zero)
 addSbtPlugin("rocks.earlyeffect" % "sbt-zipx" % "0.17.0-SNAPSHOT")
 addSbtPlugin("org.scalameta" % "sbt-scalafmt" % "2.6.2")
-addSbtPlugin("rocks.earlyeffect" % "sbt-dynver-ci" % "0.2.3")
 addSbtPlugin("rocks.earlyeffect" % "sbt-specular" % "0.18.1")
 addSbtPlugin("rocks.earlyeffect" % "sbt-chekhov" % "0.1.2")
