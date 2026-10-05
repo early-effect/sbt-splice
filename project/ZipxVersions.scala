@@ -27,8 +27,8 @@ object MyVersions extends ZipxVersions:
 
   val compress: Lib = Lib("org.apache.commons", "commons-compress", "1.28.0").java
 
-  val coursier: Lib = Lib("io.get-coursier", "coursier-cache_2.13", "2.1.25-M26").java
-    .excluding(ZipxExclude.org("org.scala-lang.modules", "scala-collection-compat_2.13"))
+  // Crossed like every other plugin's: a meta-build refuses coursier-cache _2.13 next to another plugin's _3.
+  val coursier: Lib = Lib("io.get-coursier", "coursier-cache", "2.1.26")
 
   val graalPolyglot: Lib = Lib("org.graalvm.polyglot", "polyglot", "25.2.4").java.test
   val graalJs: Lib       = Lib("org.graalvm.js", "js-language", "25.2.4").java.test

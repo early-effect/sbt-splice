@@ -79,10 +79,7 @@ object Resolve:
         val policies           =
           if env.localOnly then Seq(CachePolicy.LocalOnly)
           else Seq(CachePolicy.FetchMissing)
-        val cache = FileCache()
-          .withLocation(env.cacheDir.toFile)
-          .withChecksums(Seq(None))
-          .withCachePolicies(policies)
+        val cache = FileCache().copy(location = env.cacheDir.toFile, checksums = Seq(None), cachePolicies = policies)
         cache.file(Artifact(url)).run.unsafeRun()
       }
       .mapError(e => SpliceError.Io(s"coursier fetch $url: ${e.getMessage}"))

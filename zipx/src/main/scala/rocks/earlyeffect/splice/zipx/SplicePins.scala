@@ -255,10 +255,12 @@ object SplicePins:
   private def coursierFile(url: String, cacheDir: Path): Either[String, Path] =
     try
       given ExecutionContext = ExecutionContext.global
-      val cache              = FileCache()
-        .withLocation(cacheDir.toFile)
-        .withChecksums(Seq(None))
-        .withCachePolicies(Seq(CachePolicy.FetchMissing))
+      val cache              =
+        FileCache().copy(
+          location = cacheDir.toFile,
+          checksums = Seq(None),
+          cachePolicies = Seq(CachePolicy.FetchMissing),
+        )
       cache.file(Artifact(url)).run.unsafeRun() match
         case Left(err) => Left(s"splice pin apply: ${err.describe} ($url)")
         case Right(f)  => Right(f.toPath)
