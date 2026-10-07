@@ -13,7 +13,7 @@ object MyVersions extends ZipxVersions:
   val sbt: SbtVersion     = SbtVersion("2.1.0-M3")
   val scala: ScalaVersion = ScalaVersion("3.9.0")
 
-  val release = ShipGroup("sbt-splice", "0.3.2")("plugin", "spliceZipx")
+  val release = ShipGroup("sbt-splice", "0.3.3")("plugin", "spliceZipx")
 
   val zio: Lib        = Lib("dev.zio", "zio", "2.1.26")
   val zioTest: Lib    = zio.mod("zio-test").test
