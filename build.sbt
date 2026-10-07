@@ -86,7 +86,7 @@ lazy val spliceZipx = project
     // zipx drops org.scala-sbt off sbt-remote-cache locally; the published POM does not, so sbt
     // is re-listed as compile and compiler-interface 2.1 evicts zipx-syntax's scala3-compiler.
     addSbtPlugin(
-      ("rocks.earlyeffect" % "sbt-zipx" % "0.18.0")
+      ("rocks.earlyeffect" % "sbt-zipx" % "0.18.1")
         .excludeAll(ExclusionRule(organization = "org.scala-sbt", name = "sbt"))
     ),
   )
