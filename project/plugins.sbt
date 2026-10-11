@@ -2,4 +2,4 @@
 addSbtPlugin("rocks.earlyeffect" % "sbt-zipx" % "0.18.1")
 addSbtPlugin("org.scalameta" % "sbt-scalafmt" % "2.6.2")
 addSbtPlugin("rocks.earlyeffect" % "sbt-specular" % "0.20.0")
-addSbtPlugin("rocks.earlyeffect" % "sbt-chekhov" % "0.1.2")
+addSbtPlugin("rocks.earlyeffect" % "sbt-chekhov" % "0.1.3")
