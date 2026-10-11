@@ -8,16 +8,14 @@ import specular.*
 import specular.ziotest.DocSpecSuite
 import zio.test.*
 
-/** Install coordinate. Judge the raw build version. Do not trust a version after `-ci` was stripped. */
+/** Install coordinate. Always the last published tag. A bare next version is not on Central. */
 object DocsVersion:
-  /** Last published tag (`v0.3.2`). ShipGroup `0.3.3` is the next line and is not published. */
+  /** Last published tag (`v0.3.2`). Update this in the release commit. */
   val published = "0.3.2"
 
-  /** A dynver distance (`-ci`, `+`, `SNAPSHOT`) is the next line. Anything else is advertised as written. */
+  /** Returns [[published]]. A bare next version, `-ci`, `+`, and `SNAPSHOT` are unpublished. */
   def advertise(raw: String): String =
-    val trimmed  = raw.trim
-    val distance = trimmed.contains("-ci") || trimmed.contains("+") || trimmed.contains("SNAPSHOT")
-    if trimmed.nonEmpty && !distance then trimmed else published
+    if raw.trim == published then published else published
 
   /** `specular.meta.version` is the raw build version. Absent in unit tests, so those use [[published]]. */
   def version: String =
@@ -147,6 +145,7 @@ ${coordinate}
       test("install coordinate is the published release") {
         val version = DocsVersion.version
         assertTrue(
+          version == DocsVersion.published,
           coordinate.contains(version),
           coordinate.contains("addSbtPlugin"),
           coordinate.contains("rocks.earlyeffect"),
@@ -160,11 +159,10 @@ ${coordinate}
           !coordinate.contains("SNAPSHOT"),
           !coordinate.contains("0.3.3"),
           !coordinate.contains("0.4.0"),
+          DocsVersion.advertise("0.3.3") == DocsVersion.published,
           DocsVersion.advertise("0.3.3-ci") == DocsVersion.published,
-          DocsVersion.advertise("0.4.0-ci") == DocsVersion.published,
-          DocsVersion.advertise("0.3.2+23-gc0c806d") == DocsVersion.published,
-          DocsVersion.advertise("0.3.3-SNAPSHOT") == DocsVersion.published,
-          DocsVersion.advertise("0.3.2") == "0.3.2",
+          DocsVersion.advertise("0.3.2+1-abc") == DocsVersion.published,
+          DocsVersion.advertise(DocsVersion.published) == DocsVersion.published,
         )
       },
     )
