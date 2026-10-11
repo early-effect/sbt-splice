@@ -49,7 +49,7 @@ zipxCapabilities += ZipxCentral.snapshots
 zipxCapabilities += ZipxCentral.pullRequestSnapshots("snapshots")
 zipxCapabilities += ZipxDocs.pages()
 zipxReleaseWorkflow := Some(ZipxCentral.releases)
-zipxEnv := Map(
+zipxEnv             := Map(
   "PLAYWRIGHT_BROWSERS_PATH" -> EnvValue.typed(Expr.github("workspace") ++ Expr.lit("/target/ms-playwright"))
 )
 
@@ -97,6 +97,12 @@ lazy val docs = project
   .in(file("docs"))
   .enablePlugins(SpecularPlugin)
   .disablePlugins(chekhov.sbt.ChekhovPlugin)
+  // Cite reads `spliceFull` from this build. The published plugin does not depend on the docs project.
+  // sbt is provided on the plugin, so dependsOn alone cannot read SplicePlugin's TASTy.
+  .dependsOn(plugin)
+  .settings(
+    Test / unmanagedClasspath ++= (plugin / Compile / dependencyClasspath).value
+  )
   .settings(
     name           := "sbt-splice-docs",
     publish / skip := true,
@@ -106,8 +112,13 @@ lazy val docs = project
     specularMetaProject   := Some(LocalProject("plugin")),
     specularArtifactKind  := "plugin",
     specularSiteDirectory := (LocalRootProject / baseDirectory).value / "target" / "site",
-    // CI docs builds are dynver `-ci`; stripCi drops the suffix so install snippets show the last published tag.
-    specularDisplayVersion := stripCi,
+    // Do not strip -ci first. Past v0.3.2, sbt-dynver-ci names the distance 0.3.3-ci
+    // or 0.4.0-ci, and stripping that suffix is not a coordinate on Central.
+    // A raw version containing -ci, +, or SNAPSHOT advertises 0.3.2.
+    specularDisplayVersion := { raw =>
+      val distance = raw.contains("-ci") || raw.contains("+") || raw.contains("SNAPSHOT")
+      if (raw.nonEmpty && !distance) raw else "0.3.2"
+    },
   )
   .settings(MyVersions.docs)
 

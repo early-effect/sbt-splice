@@ -1,5 +1,9 @@
 # sbt-splice
 
+sbt-splice turns a Scala.js import specifier into pinned bytes and one script tag.
+
+Docs: <https://www.earlyeffect.rocks/sbt-splice/>
+
 Scala.js emits `import "preact"` for `@JSImport("preact")` (or `require`). A browser cannot resolve that **specifier**:
 there is no `node_modules`. **sbt-splice** maps each specifier to pinned bytes (a file you copied, a WebJar, or a
 CDN/GitHub download with sha256) and writes one script for a `<script>` tag.
@@ -14,7 +18,7 @@ Coordinate: `rocks.earlyeffect` % `sbt-splice`
 
 ```scala
 // project/plugins.sbt
-addSbtPlugin("rocks.earlyeffect" % "sbt-splice" % "<version>")
+addSbtPlugin("rocks.earlyeffect" % "sbt-splice" % "0.3.2")
 ```
 
 Enable Scala.js, map one library, run `spliceFast`:
@@ -28,9 +32,7 @@ spliceLibs += Splice.lib("preact", "10.26.4", "dist/preact.module.js").sha256("â
 
 Output defaults to `target/splice/fast.js`, `target/splice/full.js`, and `target/splice/closure.js`. An unmapped
 specifier fails the task and names the file. CDN and GitHub pins require sha256; a mismatch fails the task. A WebJar
-uses project `resolvers`. There is no npm and no `package.json`. 0.3.0 is on Maven Central.
-
-Docs: <https://www.earlyeffect.rocks/sbt-splice/>
+uses project `resolvers`. There is no npm and no `package.json`. 0.3.2 is the published release.
 
 ## License
 

@@ -34,15 +34,19 @@ object MyVersions extends ZipxVersions:
   val graalJs: Lib       = Lib("org.graalvm.js", "js-language", "25.2.4").java.test
   val graalTruffle: Lib  = Lib("org.graalvm.truffle", "truffle-runtime", "25.2.4").java.test
 
-  val specular: Lib        = Lib("rocks.earlyeffect", "specular-core", "0.18.1")
+  val specular: Lib        = Lib("rocks.earlyeffect", "specular-core", "0.20.0")
   val specularZioTest: Lib = specular.mod("specular-zio-test").test
+  val specularSite: Lib    = specular.mod("specular-site").test
   val specularTheme: Lib   = specular.mod("early-effect-docs-theme").test
+
+  /** Docs figures only. The published plugin does not select this. */
+  val mermoid: Lib = Lib("rocks.earlyeffect", "mermoid", "0.2.0")
 
   val chekhovZioTest: Lib = Lib("rocks.earlyeffect", "chekhov-zio-test", "0.1.2").test
   val chekhovDriver: Lib  = chekhovZioTest.mod("chekhov-driver")
 
   val scalafmt: Plugin       = Plugin("org.scalameta", "sbt-scalafmt", "2.6.2")
-  val specularPlugin: Plugin = Plugin("rocks.earlyeffect", "sbt-specular", "0.18.1")
+  val specularPlugin: Plugin = Plugin("rocks.earlyeffect", "sbt-specular", "0.20.0")
   val chekhovPlugin: Plugin  = Plugin("rocks.earlyeffect", "sbt-chekhov", "0.1.2")
 
   val checkout: Action =
@@ -73,7 +77,7 @@ object MyVersions extends ZipxVersions:
     graalJs,
     graalTruffle,
   )
-  def docs       = library(specularZioTest, specularTheme)
+  def docs       = library(specularZioTest, specularSite, specularTheme, mermoid.test)
   def e2e        = library(chekhovZioTest, chekhovDriver)
   def spliceZipx = library(zioTest, zioTestSbt)
 end MyVersions
