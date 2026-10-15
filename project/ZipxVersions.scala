@@ -42,12 +42,12 @@ object MyVersions extends ZipxVersions:
   /** Docs figures only. The published plugin does not select this. */
   val mermoid: Lib = Lib("rocks.earlyeffect", "mermoid", "0.2.0")
 
-  val chekhovZioTest: Lib = Lib("rocks.earlyeffect", "chekhov-zio-test", "0.1.2").test
+  val chekhovZioTest: Lib = Lib("rocks.earlyeffect", "chekhov-zio-test", "0.1.3").test
   val chekhovDriver: Lib  = chekhovZioTest.mod("chekhov-driver")
 
   val scalafmt: Plugin       = Plugin("org.scalameta", "sbt-scalafmt", "2.6.2")
   val specularPlugin: Plugin = Plugin("rocks.earlyeffect", "sbt-specular", "0.20.0")
-  val chekhovPlugin: Plugin  = Plugin("rocks.earlyeffect", "sbt-chekhov", "0.1.2")
+  val chekhovPlugin: Plugin  = Plugin("rocks.earlyeffect", "sbt-chekhov", "0.1.3")
 
   val checkout: Action =
     Action("actions/checkout", "v7.0.1", sha = "3d3c42e5aac5ba805825da76410c181273ba90b1")
@@ -56,13 +56,13 @@ object MyVersions extends ZipxVersions:
   val setupSbt: Action =
     Action("sbt/setup-sbt", "v1.5.11", sha = "6158cb0903b8ceeae04f830055f3155e1b6a5ad7")
   val setupNode: Action =
-    Action("actions/setup-node", "v7.0.0", sha = "820762786026740c76f36085b0efc47a31fe5020")
+    Action("actions/setup-node", "v7.1.0", sha = "949feb2413d6458794dcd2491c4babbbce0c15c1")
   val cache: Action =
     Action("actions/cache", "v6.1.0", sha = "55cc8345863c7cc4c66a329aec7e433d2d1c52a9")
   val uploadArtifact: Action =
-    Action("actions/upload-artifact", "v7.0.1", sha = "043fb46d1a93c77aae656e7c1c64a875d1fc6a0a")
+    Action("actions/upload-artifact", "v7.0.2", sha = "cf430e030ddbb5b0abf93d22962f4752f3646cd9")
   val downloadArtifact: Action =
-    Action("actions/download-artifact", "v8.0.1", sha = "3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c")
+    Action("actions/download-artifact", "v8.0.2", sha = "9000827ccba6bdab643e8b6fd33ac0654aef8333")
 
   def plugin = library(
     zio,
