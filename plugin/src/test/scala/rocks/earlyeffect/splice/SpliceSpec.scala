@@ -157,7 +157,6 @@ object SpliceSpec extends ZIOSpecDefault:
           !map.contains("\"sections\""),
           restored == js,
         )
-        end for
       },
       test("splices two mapped specifiers into one file") {
         for
@@ -247,7 +246,6 @@ object SpliceSpec extends ZIOSpecDefault:
           outText(body) == "hello\\?",
           !body.contains("""from "escape-string-regexp""""),
         )
-        end for
       },
       test("spliceClosure drops unused linker code and module syntax, and the library it calls still answers") {
         for
@@ -675,7 +673,6 @@ object SpliceSpec extends ZIOSpecDefault:
           )
           body <- ZIO.attempt(Files.readString(out))
         yield assertTrue(outText(body) == "umd")
-        end for
       },
       test("spliceClosure class-extends override and setState call work without a keep list") {
         for
@@ -864,7 +861,6 @@ object SpliceSpec extends ZIOSpecDefault:
           !fast.contains(ProtocolFixtures.DeadCodeMarker),
           !full.contains(ProtocolFixtures.DeadCodeMarker),
         )
-        end for
       },
       test("spliceFast keeps a connectedCallback override") {
         val linker =

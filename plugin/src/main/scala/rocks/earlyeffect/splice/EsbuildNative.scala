@@ -54,7 +54,6 @@ object EsbuildNative:
           s"spliceFull needs a pinned esbuild for this host (got os.name=$osName os.arch=$osArch). Supported: ${pins.keys.toList.sorted.mkString(", ")}"
         )
       )
-  end pinFor
 
   def optimize(js: String, cacheDir: Path, localOnly: Boolean): IO[SpliceError, String] =
     for
@@ -94,8 +93,6 @@ object EsbuildNative:
         case Outcome.Wrote(out, _, _) => ZIO.succeed(out)
         case Outcome.Failed(_, what)  => ZIO.fail(bundleError(what))
     yield out
-    end for
-  end bundle
 
   /** One linker file esbuild bundles into a classic script. `sourceMapAt` is where the map will be written, so its
     * `sources` are relative to that file. `inputs` are the files esbuild read, absolute.
@@ -133,8 +130,6 @@ object EsbuildNative:
         case Outcome.Wrote(js, map, inputs) => ZIO.succeed(Bundled(js, map, inputs))
         case Outcome.Failed(_, what)        => ZIO.fail(bundleError(what, reported, entry.label))
     yield out
-    end for
-  end bundleEntry
 
   /** The first error esbuild reported: an import it could not resolve, or anything else, with the file it named. An
     * error in the generated entry is reported as `entryLabel`.
@@ -183,7 +178,6 @@ object EsbuildNative:
     add(libraries)
     add(linker)
     md.digest.map("%02x".format(_)).mkString
-  end programDigest
 
   /** Hashes the linker text and every file esbuild read, so a transitive edit misses the stamp. */
   def bundleDigest(
@@ -216,7 +210,6 @@ object EsbuildNative:
       add(Resolve.sha256(path))
     }
     md.digest.map("%02x".format(_)).mkString
-  end bundleDigest
 
   private def aliasArgs(aliases: Map[String, Path]): List[String] =
     aliases.toList.sortBy(_._1).map { (spec, path) =>
@@ -265,7 +258,6 @@ object EsbuildNative:
       ),
       tgz("win32-x64", "package/esbuild.exe", "c7bee37877d0aa6a046e52783fa0a2cf1a9ce5579d68bb3083bda99d4bff18ef", true),
     )
-  end pins
 
   /** One lock per destination. Parallel tests and parallel sbt tasks install the same pin, and a second `REPLACE`
     * unlinks the binary while another fiber is hashing it or starting the process.
@@ -280,7 +272,6 @@ object EsbuildNative:
       _   <- ZIO.unless(hit)(stage(pin, dest, env))
       _   <- verify(dest, pin)
     yield dest
-  end binary
 
   private def stage(pin: Pin, dest: Path, env: ResolveEnv): IO[SpliceError, Unit] =
     ZIO.acquireReleaseWith(
@@ -314,7 +305,6 @@ object EsbuildNative:
         }
       }
       .mapError(e => SpliceError.Io(e.getMessage))
-  end publish
 
   private def matches(dest: Path, pin: Pin): Boolean =
     Files.isRegularFile(dest) && Resolve.sha256(dest) == pin.sha256
@@ -367,7 +357,6 @@ object EsbuildNative:
     ).asJava
     Files.setPosixFilePermissions(path, perms)
     ()
-  end chmodX
 
   /** What one esbuild run left. `inputs` are the files `--metafile` listed, absolute, including any temporary entry. */
   private enum Outcome:
@@ -439,12 +428,8 @@ object EsbuildNative:
                 }
             else Nil
           Outcome.Wrote(written, map, inputs)
-        end if
       finally proc.destroyForcibly()
-      end try
     finally restoreSourceMappingComment(entryAbs, hidden)
-    end try
-  end execIn
 
   /** Text to put back when `path` carried a source-map comment. esbuild follows that comment and records its sources.
     * With the comment gone, the bundle map names this file.

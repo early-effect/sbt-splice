@@ -55,6 +55,4 @@ object SmokeSite:
         }
       }
     yield dir
-    end for
-  end prepare
 end SmokeSite

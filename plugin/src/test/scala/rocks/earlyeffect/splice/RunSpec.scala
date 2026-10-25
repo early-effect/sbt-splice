@@ -36,7 +36,6 @@ object RunSpec extends ZIOSpecDefault:
           JsHost.evalExpr(body, "document.getElementById('out').textContent") == "hello\\?",
           !body.contains("""from "escape-string-regexp""""),
         )
-        end for
       },
       test("executes spliced preact 10.26.4 h() from the published module") {
         val jsBytes = vendorBytes("preact@10.26.4.module.js")
@@ -68,7 +67,6 @@ object RunSpec extends ZIOSpecDefault:
           JsHost.evalExpr(body, "document.getElementById('out').textContent") == "h1",
           !body.contains("""from "preact""""),
         )
-        end for
       },
       test("executes Closure-optimized splice of a Preact class-extends setState and render") {
         val jsBytes = vendorBytes("preact@10.26.4.module.js")
@@ -101,7 +99,6 @@ object RunSpec extends ZIOSpecDefault:
           JsHost.evalExpr(body, "document.getElementById('out').textContent") == "OVERRIDE_RENDER",
           body.contains("setState"),
         )
-        end for
       },
       test("executes Closure-optimized splice of preact h()") {
         val jsBytes = vendorBytes("preact@10.26.4.module.js")
@@ -130,7 +127,6 @@ object RunSpec extends ZIOSpecDefault:
           JsHost.evalExpr(body, "document.getElementById('out').textContent") == "h1",
           !body.contains("""from "preact""""),
         )
-        end for
       },
     )
 

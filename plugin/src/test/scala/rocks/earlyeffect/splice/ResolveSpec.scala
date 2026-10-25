@@ -120,7 +120,6 @@ object ResolveSpec extends ZIOSpecDefault:
           offline = envAt(dir).copy(resolvers = Seq(localCdn(p)), localOnly = true)
           got <- Splice.resolve(Seq(Splice.lib("foo", "1.0.0", "foo.js").sha256(pin)), offline)
         yield assertTrue(got.contains("foo"), Files.isRegularFile(got("foo")))
-        end for
       },
       test("WebJar extract reads META-INF/resources/webjars") {
         for
@@ -317,7 +316,6 @@ object ResolveSpec extends ZIOSpecDefault:
         server
       })(s => ZIO.succeed(s.stop(0)))
       .map(_.getAddress.getPort)
-  end serveBytes
 
   private def tarGz(root: String, path: String, body: String): Array[Byte] =
     val bytes = body.getBytes(StandardCharsets.UTF_8)
@@ -332,7 +330,6 @@ object ResolveSpec extends ZIOSpecDefault:
       tar.closeArchiveEntry()
     finally tar.close()
     baos.toByteArray
-  end tarGz
 
   private def jarWith(dir: Path, name: String, version: String, path: String, body: String): Task[Path] =
     ZIO.attempt {

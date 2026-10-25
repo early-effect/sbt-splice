@@ -64,7 +64,6 @@ object SplicePins:
         materialize = materializePin(libs, base, webjars),
       )
     )
-  end feed
 
   def lookupDefault: PinLookup = pin =>
     pin.purl.map(p => p: String) match
@@ -111,7 +110,6 @@ object SplicePins:
           else
             Files.writeString(f.toPath, text.replace(fromVer, toVer).replace(fromSha, newSha.toLowerCase))
             Right(())
-        end if
 
   private def enrich(
       pin: Pin,
@@ -276,7 +274,6 @@ object SplicePins:
         else Nil
       }
     go(base)
-  end sourceFiles
 
   private def count(hay: String, needle: String): Int =
     if needle.isEmpty then 0

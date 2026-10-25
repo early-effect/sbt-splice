@@ -78,7 +78,6 @@ private[splice] object JsonText:
     }
     b.append('"')
     b.toString
-  end encode
 
   /** Keys of the top-level object member `member`. Nested objects of the same name are not that member. */
   def objectKeys(text: String, member: String): List[String] =
@@ -114,10 +113,7 @@ private[splice] object JsonText:
       else
         if arm && depth == 1 then arm = false
         i += 1
-      end if
-    end while
     found.result()
-  end objectKeys
 
   /** Rewrite the string elements of the top-level array `member`. The rest of `text` stays. */
   def mapStringArray(text: String, member: String)(f: String => String): String =
@@ -149,10 +145,7 @@ private[splice] object JsonText:
       else
         if arm && depth == 1 then arm = false
         i += 1
-      end if
-    end while
     done.getOrElse(text)
-  end mapStringArray
 
   /** Decoded string and the index just after its closing quote. `open` points at the opening quote. */
   def readString(text: String, open: Int): Option[(String, Int)] =
@@ -190,10 +183,7 @@ private[splice] object JsonText:
           case ch =>
             b.append(ch)
             i += 1
-      end while
       if closed && !bad then Some(b.toString -> i) else None
-    end if
-  end readString
 
   private def rewriteArray(text: String, open: Int, f: String => String): String =
     readStringArray(text, open) match
@@ -223,11 +213,7 @@ private[splice] object JsonText:
               i = next
             case None => ok = false
         else ok = false
-        end if
-      end while
       if ok && closed then Some(buf.result() -> i) else None
-    end if
-  end readStringArray
 
   private def hex4(s: String): Option[Char] =
     if s.length != 4 then None
@@ -245,8 +231,6 @@ private[splice] object JsonText:
         else n = n * 16 + d
         i += 1
       if ok then Some(n.toChar) else None
-    end if
-  end hex4
 
   private def isWs(c: Char): Boolean =
     c == ' ' || c == '\n' || c == '\r' || c == '\t'

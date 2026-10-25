@@ -107,8 +107,6 @@ object Splice:
       _ <- ZIO.foreachDiscard(built.sourceMap)(write(SourceMaps.mapPath(input.output), _))
       _ <- rememberBundle(input, durable)
     yield ()
-    end for
-  end bundleBuild
 
   private def bundleDigestOf(input: SpliceInput, inputs: List[Path]): String =
     EsbuildNative.bundleDigest(
@@ -140,8 +138,6 @@ object Splice:
           .map(Path.of(_))
           .toList
       )
-    end if
-  end recordedInputs
 
   private def rememberBundle(input: SpliceInput, inputs: List[Path]): IO[SpliceError, Unit] =
     input.cache match
@@ -190,8 +186,6 @@ object Splice:
           input.localOnly,
         )
         .map(bundle => bundle + bindings.mkString("", "\n", "\n"))
-    end if
-  end bundled
 
   /** The linker's output as one script, its exports dropped when a minifier will read it as a script. */
   private def linkerOf(input: SpliceInput): String =
