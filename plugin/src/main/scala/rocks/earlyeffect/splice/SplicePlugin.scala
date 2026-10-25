@@ -189,7 +189,6 @@ object SplicePlugin extends AutoPlugin:
       Duration.Inf,
     )
     ()
-  end privateLink
 
   private def runSplice(
       dir: File,
@@ -237,7 +236,6 @@ object SplicePlugin extends AutoPlugin:
       )
     )
     out
-  end runSplice
 
   private def webjarJars(report: UpdateReport, webjars: Seq[SpliceLib.WebJar]): Map[String, Path] =
     val modules =
@@ -256,5 +254,4 @@ object SplicePlugin extends AutoPlugin:
         .flatMap(m => m.artifacts.collectFirst { case (_, f) => f })
       file.map(f => w.specifier -> f.toPath)
     }.toMap
-  end webjarJars
 end SplicePlugin

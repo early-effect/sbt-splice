@@ -24,7 +24,6 @@ object SpliceZipxPlugin extends AutoPlugin:
       "Fetch the new CDN file or GitHub tarball and return its sha256. Version and hash move together."
     )
     export rocks.earlyeffect.splice.zipx.SplicePins
-  end autoImport
 
   import autoImport.*
 

@@ -104,8 +104,6 @@ object Resolve:
             )
           )
         case Some(jar) => extract(lib, jar, env.extractDir)
-    end if
-  end webjar
 
   private def extract(lib: SpliceLib.WebJar, jar: Path, destDir: Path): IO[SpliceError, Path] =
     val entry = s"META-INF/resources/webjars/${lib.name}/${lib.version}/${lib.path.stripPrefix("/")}"
@@ -128,8 +126,6 @@ object Resolve:
           case Left(err) => ZIO.fail(err)
           case Right(p)  => ZIO.succeed(p)
         }
-    end if
-  end extract
 
   private def github(lib: SpliceLib.GitHub, env: ResolveEnv): IO[SpliceError, Path] =
     val pin = lib.sha256.map(_.trim.toLowerCase).filter(_.nonEmpty)
@@ -145,8 +141,6 @@ object Resolve:
               if !validTag(lib.tag) then ZIO.fail(SpliceError.Io(s"""GitHub tag must be exact, got "${lib.tag}""""))
               else if illegalPath(lib.path) then ZIO.fail(SpliceError.Io(s"illegal archive path ${lib.path}"))
               else fetchGithub(lib, owner, repo, expected, origins.toList, env)
-    end match
-  end github
 
   private def fetchGithub(
       lib: SpliceLib.GitHub,
@@ -217,9 +211,7 @@ object Resolve:
                   Files.copy(tar, dest, StandardCopyOption.REPLACE_EXISTING)
                   found = Some(dest)
                 case _ => ()
-            end if
             entry = tar.getNextEntry
-          end while
           found.toRight(SpliceError.MissingArchivePath(lib.specifier, archive.toString, want))
       }
       .mapError(e => SpliceError.Io(s"could not read ${archive}: ${e.getMessage}"))
@@ -227,7 +219,6 @@ object Resolve:
         case Left(err) => ZIO.fail(err)
         case Right(p)  => ZIO.succeed(p)
       }
-  end extractTarGz
 
   private def parseRepo(repository: String): Either[SpliceError, (String, String)] =
     repository.split("/", -1) match

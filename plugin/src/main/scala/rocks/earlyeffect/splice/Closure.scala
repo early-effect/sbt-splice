@@ -101,7 +101,6 @@ object Closure:
       options.setComputeFunctionSideEffects(computeFunctionSideEffects)
       options.setDeadPropertyAssignmentElimination(deadPropertyAssignmentElimination)
       options.setExtractPrototypeMemberDeclarations(extractPrototypeMemberDeclarations)
-    end applyTo
   end AdvancedPolicy
 
   private val lock = new Object
@@ -168,7 +167,6 @@ object Closure:
         case Left(err)       => ZIO.fail(err)
         case Right(compiled) => ZIO.succeed(compiled)
       }
-  end optimize
 
   /** Hashes what Closure is given, and how, so a change anywhere a library reaches rebuilds. */
   def programDigest(libraries: String, linker: String, output: Path, sourceMaps: Boolean): String =
@@ -185,7 +183,6 @@ object Closure:
     add(libraries)
     add(linker)
     md.digest.map("%02x".format(_)).mkString
-  end programDigest
 
   def cacheHit(stamp: Path, digest: String, output: Path, sourceMap: Option[Path] = None): Boolean =
     Files.isRegularFile(output) &&
@@ -257,7 +254,6 @@ object Closure:
           }
         else None
       Right(Compiled(js, map))
-    end if
   end compile
 
   @nowarn("cat=deprecation")

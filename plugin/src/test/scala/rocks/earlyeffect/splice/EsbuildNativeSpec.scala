@@ -77,7 +77,6 @@ object EsbuildNativeSpec extends ZIOSpecDefault:
         results.size == callers,
         results.forall(js => js.contains("extends Error") && !js.contains("Error.call(")),
       )
-      end for
     },
     test("unknown host fails without fetching") {
       val err = EsbuildNative.pinFor("SerenityOS", "riscv64")
